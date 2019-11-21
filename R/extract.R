@@ -1,9 +1,9 @@
 sequenza.extract <- function(file, window = 1e6, overlap = 1,
-    gamma = 80, kmin = 10, gamma.pcf = 140, kmin.pcf = 40,
-    mufreq.treshold = 0.10, min.reads = 40, min.reads.normal = 10,
-    min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
-    min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
-    breaks = NULL, breaks.method = "het", assembly = "hg19",
+    slide_win = 100, peak_win = 100, mufreq.treshold = 0.10,
+    min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
+    max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
+    verbose = TRUE, chromosome.list = NULL, breaks = NULL,
+    breaks.method = "het", assembly = "hg19",
     weighted.mean = TRUE, normalization.method = "mean",
     ignore.normal = FALSE, parallel = 1, gc.stats = NULL,
     segments.samples = FALSE){
@@ -75,20 +75,22 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
                 norm_tumor_depth / norm_normal_depth, 3)
         }
         if (segments.samples == TRUE) {
-            breaks_normal_chr <- breaks_full(
-                data = data.frame(chromosome = seqz.data$chromosome,
-                                  position = seqz.data$position,
-                                  adjusted.ratio = norm_normal_depth,
-                                  singsAsFactors = FALSE),
-                gamma = gamma.pcf, kmin = kmin.pcf, assembly = assembly,
-                breaks.het = NULL)
-            breaks_tumor_chr <- breaks_full(
-               data = data.frame(chromosome = seqz.data$chromosome,
-                                 position = seqz.data$position,
-                                 adjusted.ratio = norm_tumor_depth,
-                                 singsAsFactors = FALSE),
-               gamma = gamma.pcf, kmin = kmin.pcf, assembly = assembly,
-               breaks.het = NULL)
+            breaks_normal_chr <- NULL
+            breaks_tumor_chr <- NULL
+            # breaks_normal_chr <- breaks_full(
+            #     data = data.frame(chromosome = seqz.data$chromosome,
+            #                       position = seqz.data$position,
+            #                       adjusted.ratio = norm_normal_depth,
+            #                       singsAsFactors = FALSE),
+            #     gamma = gamma.pcf, kmin = kmin.pcf, assembly = assembly,
+            #     breaks.het = NULL)
+            # breaks_tumor_chr <- breaks_full(
+            #    data = data.frame(chromosome = seqz.data$chromosome,
+            #                      position = seqz.data$position,
+            #                      adjusted.ratio = norm_tumor_depth,
+            #                      singsAsFactors = FALSE),
+            #    gamma = gamma.pcf, kmin = kmin.pcf, assembly = assembly,
+            #    breaks.het = NULL)
         } else {
            breaks_normal_chr <- NULL
            breaks_tumor_chr <- NULL
@@ -145,18 +147,15 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
                 mean = 0, q0 = 0,  q1 = 0, N = 1)
         }
         if (het_ok) {
-            breaks_chr <- extract_breaks(data = seqz.data, data_het = seqz.het,
-                ratio = seqz.r.win, baf = seqz.b.win,
-                gamma = gamma, kmin = kmin, breaks = breaks_chr,
-                gamma.pcf = gamma.pcf, kmin.pcf = kmin.pcf,
-                assembly = assembly, chromosome = chr,
-                method = breaks.method)
+            breaks_chr <- extract_breaks(
+                data = seqz.data, data_het = seqz.het,
+                breaks = breaks_chr, slide_win, peak_win, assembly = assembly,
+                chromosome = chr, method = breaks.method)
         } else {
             if (breaks.method == "full") {
-                breaks_chr <- extract_breaks(data = seqz.data,
-                    data_het = seqz.het, ratio = seqz.r.win, baf = seqz.b.win,
-                    gamma = gamma, kmin = kmin,
-                    gamma.pcf = gamma.pcf, kmin.pcf = kmin.pcf,
+                breaks_chr <- extract_breaks(
+                    data = seqz.data, data_het = seqz.het,
+                    breaks = breaks_chr, slide_win, peak_win,
                     assembly = assembly, chromosome = chr,
                     method = breaks.method)
             }

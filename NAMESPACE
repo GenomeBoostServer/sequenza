@@ -1,3 +1,5 @@
+useDynLib(sequenza, .registration=TRUE)
+
 export(
     baf.bayes,
     baf.model.fit,
@@ -6,7 +8,7 @@ export(
     chromosome.view,
     cp.plot,
     cp.plot.contours,
-    find.breaks,
+    find_breaks,
     gc.sample.stats,
     gc.summary.plot,
     get.ci,
@@ -28,6 +30,27 @@ export(
     windowBf,
     windowValues
 )
+
+import("Rcpp")
+
+
+importFrom("stringr",
+    "str_replace"
+)
+
+importFrom("readr",
+    "read_tsv"
+)
+
+importFrom("dplyr",
+    "between"
+)
+
+importFrom("tibble",
+    "tibble",
+    "add_row"
+)
+
 importFrom("squash",
     "colorgram",
     "makecmap"
@@ -52,12 +75,6 @@ importFrom("readr",
 
 importFrom("seqminer",
     "tabix.read"
-)
-
-importFrom("copynumber",
-    "winsorize",
-    "pcf",
-    "aspcf"
 )
 
 importFrom("grDevices",

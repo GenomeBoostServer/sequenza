@@ -1,113 +1,48 @@
-extract_breaks <- function(data, data_het, ratio, baf, breaks, gamma, kmin,
-    gamma.pcf, kmin.pcf, assembly, chromosome,
-    method = c("het", "full", "fast")) {
-    method_list <- c("het", "full", "fast")
-    if (is.null(breaks)) {
-        if (method %in% method_list) {
-            if (method == "fast"){
-                breaks <- breaks_fast(ratio_win = ratio, baf_win = baf,
-                    gamma = gamma, kmin = kmin, chr = chromosome)
-            } else {
-                breaks <- breaks_het(data = data_het, gamma = gamma,
-                    kmin = kmin, assembly = assembly)
-            }
-            if (method == "full") {
-                breaks <- breaks_full(data = data, gamma = gamma.pcf,
-                    kmin = kmin.pcf, assembly, breaks.het = breaks)
-            }
-        } else {
-            stop("Available methods are \'full\', \'het\' and \'fast\'.")
-        }
-    }
-    breaks
-}
-
-
-breaks_het <- function(data, gamma, kmin, assembly){
-    try(
-        find.breaks(data, gamma = gamma, assembly = assembly,
-            kmin = kmin, baf.thres = c(0, 0.5)),
-    silent = FALSE)
-}
-
-breaks_full <- function(data, gamma, kmin,
-    assembly, breaks.het = NULL) {
-    merge.breaks <- function (breaks, breaks.het) {
-        merged.breaks <- unique(sort(c(breaks$start.pos,
-            breaks$end.pos, breaks.het$start.pos, breaks.het$end.pos)))
-        merged.breaks <- merged.breaks[diff(merged.breaks) > 1]
-        merged.start <- merged.breaks
-        merged.start[-1] <- merged.start[-1] + 1
-        breaks <- data.frame(chrom = unique(breaks$chrom),
-            start.pos = merged.start[- (length(merged.start))],
-            end.pos = merged.breaks[-1])
-    }
-    breaks <- find.breaks(data, gamma = gamma, kmin = kmin,
-        assembly = assembly, seg.algo = "pcf")
-    if (!is.null(breaks.het)) {
-        chr.p <- merge.breaks(breaks[breaks$arm == "p", ],
-            breaks.het[breaks.het$arm == "p", ])
-        chr.q <- merge.breaks(breaks[breaks$arm == "q", ],
-            breaks.het[breaks.het$arm == "q", ])
-        breaks <- rbind(chr.p, chr.q)
-    }
-    breaks
-}
-
-breaks_fast <- function(ratio_win, baf_win, chr, gamma, kmin) {
-    BAF <- data.frame(chrom = chr,
-        pos = c(baf_win[[1]]$start, tail(baf_win[[1]]$end, n = 1)),
-        s1 = c(baf_win[[1]]$mean, tail(baf_win[[1]]$mean, n = 1)))
-    logR <- data.frame(chrom = chr,
-        pos = c(ratio_win[[1]]$start, tail(ratio_win[[1]]$end, n = 1)),
-        s1 = c(log2(ratio_win[[1]]$mean),
-            log2(tail(ratio_win[[1]]$mean, n = 1))))
-    cat(nrow(BAF), nrow(logR), "\n")
-    not.cover <- is.na(logR$s1) & is.na(BAF$s1)
-    BAF  <- BAF[!not.cover, ]
-    logR <- logR[!not.cover, ]
-    logR.wins <- copynumber::winsorize(logR, verbose = FALSE)
-    allele.seg <- copynumber::aspcf(logR = logR.wins, BAF = BAF,
-        baf.thres = c(0, 0.5), verbose = FALSE,
-        gamma = gamma, kmin = kmin)
-    if (length(grep("^chr", chr)) > 0) {
-        allele.seg$chrom <- paste0("chr", allele.seg$chrom)
-    }
-    breaks   <- allele.seg[, c("chrom", "start.pos", "end.pos")]
-    not.uniq <- which(breaks$end.pos == c(breaks$start.pos[-1], 0))
-    breaks$end.pos[not.uniq] <- breaks$end.pos[not.uniq] - 1
-    breaks
-}
-
-
-find.breaks <- function(seqz.baf, gamma = 80, kmin = 10,
-    baf.thres = c(0, 0.5), verbose = FALSE, seg.algo = "aspcf", ...) {
+find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name) {
     chromosome <- gsub(x = seqz.baf$chromosome,
         pattern = "chr", replacement = "")
-    logR = data.frame(chrom = chromosome,
-        pos = seqz.baf$position,
-        s1 = log2(seqz.baf$adjusted.ratio))
-    logR.wins <- copynumber::winsorize(logR, verbose = verbose)
-    if (seg.algo == "aspcf"){
-        BAF = data.frame(chrom = chromosome,
-            pos = seqz.baf$position,
-            s1 = seqz.baf$Bf)
-        allele.seg <- copynumber::aspcf(logR = logR.wins,
-            BAF = BAF, baf.thres = baf.thres, verbose = verbose,
-            gamma = gamma, kmin = kmin, ...)
-    } else if (seg.algo == "pcf") {
-        allele.seg <- copynumber::pcf(data = logR.wins, verbose = verbose,
-            gamma = gamma, kmin = kmin, ...)
-    } else {
-      stop("Segmentation algorithm must be either \'aspcf\' or \'pcf\'.")
-    }
-    if (length(grep("chr", seqz.baf$chromosome)) > 0) {
-        allele.seg$chrom <- paste("chr", allele.seg$chrom, sep = "")
-    }
-    breaks   <- allele.seg[, c("chrom", "start.pos", "end.pos", "arm")]
+    chromosome <- paste0("chr", chromosome)
+
+    ratio_diffs <- slide_matrix(seqz.baf$adjusted.ratio, w = slide_win,
+                                position = seqz.baf$position)
+    bf_diffs <- slide_matrix(seqz.baf$Bf, w = slide_win,
+                             position = seqz.baf$position)
+
+    peaks_both <- get_gaps_peaks(x = (ratio_diffs$y + bf_diffs$y) / 2,
+                                 position = ratio_diffs$x, w = peak_win,
+                                 arms = arms)
+    breaks <- lapply(peaks_both, FUN = function(peaks) {
+         coords <- peaks
+         if (is.null(coords)) {
+           NULL
+         } else {
+           pos_start <- coords[-length(coords)]
+           pos_end <- coords[-1]
+           data.frame(
+             chrom = chr_name, start.pos = pos_start,
+             end.pos = pos_end)
+         }
+    })
+    breaks <- do.call(rbind, breaks)
     not.uniq <- which(breaks$end.pos == c(breaks$start.pos[-1],0))
     breaks$end.pos[not.uniq] <- breaks$end.pos[not.uniq] - 1
     breaks
+}
+
+extract_breaks <- function(data, data_het, breaks,
+                           slide_win, peak_win, assembly, chromosome,
+                           method = c("het", "full")) {
+  golden_path <- paste("http://hgdownload.cse.ucsc.edu",
+                       "goldenPath", assembly, "database",
+                       "cytoBand.txt.gz", sep = "/")
+  arms <- get_assembly(url = golden_path, prefix = "chr")
+  chr_arm <- gsub(x = chromosome,
+                  pattern = "chr", replacement = "")
+  chr_arm <- paste0("chr", chr_arm)
+
+  arms_i <- arms[arms$chromosome == chr_arm, ]
+  data_het <- data_het[data_het$chromosome == chromosome, ]
+  find_breaks(data_het, slide_win, peak_win, arms_i, chromosome)
 }
 
 segment.breaks <- function(seqz.tab, breaks, min.reads.baf = 1,
