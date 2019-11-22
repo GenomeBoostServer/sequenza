@@ -71,12 +71,14 @@ get_gaps_peaks <- function(x, w = 100, position = NULL, arms) {
             pos_start <- coords[-length(coords)]
             pos_end <- coords[-1]
             message(paste(coords, collapse=" "))
+
+            breaks <- tibble(start.pos = pos_start, end.pos = pos_end)
+
             message(breaks, ",", start.pos = min(position[index]),
                     ",", end.pos = coords[1] - 1, ",", .before = 1)
             message(breaks, ",", start.pos = coords[length(coords)] + 1,
                     ",", end.pos = max(position[index]), ",")
 
-            breaks <- tibble(start.pos = pos_start, end.pos = pos_end)
             breaks <- add_row(breaks, start.pos = min(position[index]),
                               end.pos = coords[1] - 1, .before = 1)
             breaks <- add_row(breaks, start.pos = coords[length(coords)] + 1,
