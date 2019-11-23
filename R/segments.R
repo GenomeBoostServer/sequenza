@@ -32,17 +32,21 @@ find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name) {
 extract_breaks <- function(data, data_het, breaks,
                            slide_win, peak_win, assembly, chromosome,
                            method = c("het", "full")) {
-  golden_path <- paste("http://hgdownload.cse.ucsc.edu",
-                       "goldenPath", assembly, "database",
-                       "cytoBand.txt.gz", sep = "/")
-  arms <- get_assembly(url = golden_path, prefix = "chr")
-  chr_arm <- gsub(x = chromosome,
-                  pattern = "chr", replacement = "")
-  chr_arm <- paste0("chr", chr_arm)
+  if (is.null(breaks)) {
+      golden_path <- paste("http://hgdownload.cse.ucsc.edu",
+                           "goldenPath", assembly, "database",
+                           "cytoBand.txt.gz", sep = "/")
+      arms <- get_assembly(url = golden_path, prefix = "chr")
+      chr_arm <- gsub(x = chromosome,
+                      pattern = "chr", replacement = "")
+      chr_arm <- paste0("chr", chr_arm)
 
-  arms_i <- arms[arms$chromosome == chr_arm, ]
-  data_het <- data_het[data_het$chromosome == chromosome, ]
-  find_breaks(data_het, slide_win, peak_win, arms_i, chromosome)
+      arms_i <- arms[arms$chromosome == chr_arm, ]
+      data_het <- data_het[data_het$chromosome == chromosome, ]
+      find_breaks(data_het, slide_win, peak_win, arms_i, chromosome)
+  } else {
+      breaks
+  }
 }
 
 segment.breaks <- function(seqz.tab, breaks, min.reads.baf = 1,
