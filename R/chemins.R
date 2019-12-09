@@ -34,7 +34,7 @@ get_assembly <- function(name, url = NULL, prefix = "chr") {
 
 slide_matrix <- function(
     x, position = NULL, w = 100, smooth = TRUE,
-    method = c("kstest", "meandiff", "both")) {
+    method = c("kstest", "meandiff", "both"), verbose = TRUE) {
 
     if (is.null(position)) {
         position <- seq_len(length(x))
@@ -51,7 +51,7 @@ slide_matrix <- function(
     } else {
          method <- 1
     }
-    .Call(`_sequenza_slide_matrix`, x, position, w, smooth, method)
+    .Call(`_sequenza_slide_matrix`, x, position, w, smooth, method, verbose)
 }
 
 

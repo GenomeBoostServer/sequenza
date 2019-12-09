@@ -150,14 +150,15 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
             breaks_chr <- extract_breaks(
                 data = seqz.data, data_het = seqz.het,
                 breaks = breaks_chr, slide_win, peak_win, assembly = assembly,
-                chromosome = chr, method = breaks.method)
+                chromosome = chr, method = breaks.method,
+                verbose = verbose)
         } else {
             if (breaks.method == "full") {
                 breaks_chr <- extract_breaks(
                     data = seqz.data, data_het = seqz.het,
                     breaks = breaks_chr, slide_win, peak_win,
                     assembly = assembly, chromosome = chr,
-                    method = breaks.method)
+                    method = breaks.method, verbose = verbose)
             }
         }
         if (class(breaks_chr) == "try-error") {

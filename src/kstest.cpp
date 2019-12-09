@@ -1,7 +1,7 @@
 #include <RcppArmadillo.h>
 #include <Rcpp.h>
 #include <stdlib.h>
-// Correctly setup the build environment 
+// Correctly setup the build environment
 // [[Rcpp::depends(RcppArmadillo)]]
 
 
@@ -11,7 +11,7 @@
 using namespace Rcpp;
 
 // Implementation of a function that given 2 vectors
-// returns the D value of the Kolmogorov-Smirnov test 
+// returns the D value of the Kolmogorov-Smirnov test
 double kstest(const NumericVector& a, const NumericVector&  b) {
 	NumericVector x = na_omit(a);
 	NumericVector y = na_omit(b);
@@ -66,27 +66,29 @@ double diff_test(const NumericVector& x, int start, int end, int method = 1) {
 }
 
 
-void  coord_quart(NumericVector res, const IntegerVector& x, const NumericVector& y, int w_half, int method = 1) {
+void  coord_quart(NumericVector res, const IntegerVector& x, const NumericVector& y, int w_half, int method = 1, bool verbose = true) {
     int N = res.size();
-    Progress p(N, true);
+    Progress p(N, verbose);
     for (int i = 0; i < N; i++){
-        if ( ! Progress::check_abort() ) {
-            p.increment();
-            int x1 = x[i] - w_half;
-            int x2 = x[i] + w_half - 1;
-            res[i] = diff_test(y, x1, x2, method);
+        if (verbose == true) {
+            if ( ! Progress::check_abort() ) {
+                p.increment();
+            }
         }
+        int x1 = x[i] - w_half;
+        int x2 = x[i] + w_half - 1;
+        res[i] = diff_test(y, x1, x2, method);
     }
 }
 
 
-DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, bool smooth = true, int method = 1) {
+DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, bool smooth = true, int method = 1, bool verbose = true) {
     int N = x.size();
     //x = x / mean(x, na.rm = TRUE)
     int w_half = std::round(w / 2);
     IntegerVector steps = Rcpp::Range(w_half, N - w_half);
     NumericVector ksres(steps.size());
-    coord_quart(ksres, steps, x, w_half, method);
+    coord_quart(ksres, steps, x, w_half, method, verbose);
     IntegerVector pos_sub =  position[steps];
     if (smooth) {
         // sloppy smoothing using R smooth.spline
@@ -96,7 +98,7 @@ DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, boo
         Rcpp::List smooth_ksres = smooth_spline(pos_sub, ksres);
         return(DataFrame::create( Named("x") = smooth_ksres["x"],  Named("y") = smooth_ksres["y"]));
     } else {
-        return(DataFrame::create( Named("x") = pos_sub,  Named("y") = ksres));      
+        return(DataFrame::create( Named("x") = pos_sub,  Named("y") = ksres));
     }
 }
 

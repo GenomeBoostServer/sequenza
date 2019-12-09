@@ -1,12 +1,17 @@
-find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name) {
+find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name, verbose) {
     chromosome <- gsub(x = seqz.baf$chromosome,
         pattern = "chr", replacement = "")
     chromosome <- paste0("chr", chromosome)
-
+    if (verbose) {
+      message("Segmenting depth ratios")
+    }
     ratio_diffs <- slide_matrix(seqz.baf$adjusted.ratio, w = slide_win,
-                                position = seqz.baf$position)
+                                position = seqz.baf$position, verbose = verbose)
+    if (verbose) {
+      message("Segmenting allele frequencies")
+    }
     bf_diffs <- slide_matrix(seqz.baf$Bf, w = slide_win,
-                             position = seqz.baf$position)
+                             position = seqz.baf$position, verbose = verbose)
 
     peaks_both <- get_gaps_peaks(x = (ratio_diffs$y + bf_diffs$y) / 2,
                                  position = ratio_diffs$x, w = peak_win,
@@ -31,7 +36,7 @@ find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name) {
 
 extract_breaks <- function(data, data_het, breaks,
                            slide_win, peak_win, assembly, chromosome,
-                           method = c("het", "full")) {
+                           method = c("het", "full"), verbose = TRUE) {
   if (is.null(breaks)) {
       golden_path <- paste("http://hgdownload.cse.ucsc.edu",
                            "goldenPath", assembly, "database",
@@ -43,7 +48,7 @@ extract_breaks <- function(data, data_het, breaks,
 
       arms_i <- arms[arms$chromosome == chr_arm, ]
       data_het <- data_het[data_het$chromosome == chromosome, ]
-      find_breaks(data_het, slide_win, peak_win, arms_i, chromosome)
+      find_breaks(data_het, slide_win, peak_win, arms_i, chromosome, verbose)
   } else {
       breaks
   }

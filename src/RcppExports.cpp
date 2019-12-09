@@ -4,8 +4,8 @@ using namespace Rcpp;
 
 
 // slide_matrix
-DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, bool smooth = true, int method = 1);
-RcppExport SEXP _sequenza_slide_matrix(SEXP xSEXP, SEXP positionSEXP, SEXP wSEXP, SEXP smoothSEXP, SEXP methodSEXP){
+DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, bool smooth = true, int method = 1, bool verbose = true);
+RcppExport SEXP _sequenza_slide_matrix(SEXP xSEXP, SEXP positionSEXP, SEXP wSEXP, SEXP smoothSEXP, SEXP methodSEXP, SEXP verboseSEXP){
 BEGIN_RCPP
     RObject rcpp_result_gen;
     RNGScope rcpp_rngScope_gen;
@@ -14,7 +14,8 @@ BEGIN_RCPP
     traits::input_parameter< int >::type w(wSEXP);
     traits::input_parameter< bool >::type smooth(smoothSEXP);
     traits::input_parameter< int >::type method(methodSEXP);
-    rcpp_result_gen = wrap(slide_matrix(x, position, w, smooth, method));
+    traits::input_parameter< bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = wrap(slide_matrix(x, position, w, smooth, method, verbose));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -36,7 +37,7 @@ END_RCPP
 
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_sequenza_slide_matrix", (DL_FUNC) &_sequenza_slide_matrix, 5},
+    {"_sequenza_slide_matrix", (DL_FUNC) &_sequenza_slide_matrix, 6},
     {"_sequenza_get_peaks", (DL_FUNC) &_sequenza_get_peaks, 3},
     {NULL, NULL, 0}
 };
