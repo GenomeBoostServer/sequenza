@@ -1,12 +1,20 @@
+# file = data.file; window = 1e6; overlap = 1;
+#     slide_win = 100; peak_wins = seq(from = 50, to = 300, by = 25);
+#     mufreq.treshold = 0.10; min.reads = 40; min.reads.normal = 10;
+#     min.reads.baf = 1; max.mut.types = 1; min.type.freq = 0.9;
+#     min.fw.freq = 0; verbose = TRUE; chromosome.list = NULL;
+#     breaks = NULL; assembly = "hg19"; weighted.mean = TRUE;
+#     normalization.method = "mean"; ignore.normal = FALSE;
+#     parallel = 1; gc.stats = NULL; segments.samples = FALSE
+
 sequenza.extract <- function(file, window = 1e6, overlap = 1,
-    slide_win = 100, peak_win = 100, mufreq.treshold = 0.10,
-    min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
-    max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
-    verbose = TRUE, chromosome.list = NULL, breaks = NULL,
-    breaks.method = "het", assembly = "hg19",
-    weighted.mean = TRUE, normalization.method = "mean",
-    ignore.normal = FALSE, parallel = 1, gc.stats = NULL,
-    segments.samples = FALSE){
+    slide_win = 100, peak_wins = seq(from = 50, to = 300, by = 25),
+    mufreq.treshold = 0.10, min.reads = 40, min.reads.normal = 10,
+    min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
+    min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
+    breaks = NULL, assembly = "hg19", weighted.mean = TRUE,
+    normalization.method = "mean", ignore.normal = FALSE,
+    parallel = 1, gc.stats = NULL, segments.samples = FALSE) {
 
     if (is.null(gc.stats)) {
         gc.stats <- gc.sample.stats(file, verbose = verbose,
@@ -146,35 +154,61 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
                 na.rm = TRUE), end = max(seqz.data$position, na.rm = TRUE),
                 mean = 0, q0 = 0,  q1 = 0, N = 1)
         }
-        if (het_ok) {
-            breaks_chr <- extract_breaks(
-                data = seqz.data, data_het = seqz.het,
-                breaks = breaks_chr, slide_win, peak_win, assembly = assembly,
-                chromosome = chr, method = breaks.method,
-                verbose = verbose)
-        } else {
-            if (breaks.method == "full") {
-                breaks_chr <- extract_breaks(
-                    data = seqz.data, data_het = seqz.het,
-                    breaks = breaks_chr, slide_win, peak_win,
-                    assembly = assembly, chromosome = chr,
-                    method = breaks.method, verbose = verbose)
+        diff_track <- slide_tracks(seqz.het, slide_win,
+            signal_out = "both", verbose = verbose)
+        breaks_chr_list <- lapply(peak_wins, FUN = function(
+            x, data, data_het, breaks, slide_win,
+            assembly, chromosome, verbose,
+            min.reads.baf, weighted.mean) {
+            breaks_chr <- extract_breaks_tracks(
+                track = diff_track, breaks = breaks,
+                peak_win = x, assembly = assembly,
+                chromosome = chr)
+            if (class(breaks_chr) == "try-error") {
+                breaks_chr <- NULL
             }
-        }
-        if (class(breaks_chr) == "try-error") {
-           breaks_chr <- NULL
-        }
-        if (is.null(breaks_chr) || nrow(breaks_chr) == 0 ||
-            length(breaks_chr) == 0) {
-            breaks_chr <- data.frame(chrom = chr,
-                start.pos = min(seqz.data$position, na.rm = TRUE),
-                end.pos = max(seqz.data$position, na.rm = TRUE))
-        }
-        seg.s1 <- segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
+            if (is.null(breaks_chr) || nrow(breaks_chr) == 0 ||
+                length(breaks_chr) == 0) {
+                breaks_chr <- data.frame(chrom = chr,
+                    start.pos = min(seqz.data$position, na.rm = TRUE),
+                    end.pos = max(seqz.data$position, na.rm = TRUE))
+            }
+            segment.breaks(seqz.tab = data, breaks = breaks_chr,
+                min.reads.baf = min.reads.baf,
+                weighted.mean = weighted.mean)
+
+        }, data = seqz.data, data_het = seqz.het,
+            breaks = breaks_chr, slide_win = slide_win,
+            assembly = assembly, chromosome = chr, verbose = verbose,
             min.reads.baf = min.reads.baf, weighted.mean = weighted.mean)
 
-        mut.tab   <- mutation.table(seqz.data,
-            mufreq.treshold = mufreq.treshold,
+        names(breaks_chr_list) <- as.character(peak_wins)
+
+        compare_bins_list <- lapply(breaks_chr_list, FUN = function(
+            x, baf_win, ratio_win) {
+            baf_vs_bins <- compare_bins(
+                x$start.pos, x$end.pos, x$Bf, baf_win)
+            ratio_vs_bins <- compare_bins(
+                x$start.pos, x$end.pos, x$depth.ratio, ratio_win)
+            cbind(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
+        }, baf_win = seqz.b.win[[chr]], ratio_win = seqz.r.win[[chr]])
+
+        compare_bins_segs <- data.frame(peak_win = peak_wins,
+            do.call(rbind, compare_bins_list))
+        compare_bins_segs$n_segs <- sapply(breaks_chr_list, nrow)
+
+        ranks_fits <- cbind(
+            apply(-compare_bins_segs[,
+                c("baf_fit", "ratio_fit")], 2, rank, ties.method = "max"),
+            n_segs = rank(compare_bins_segs$n_segs, ties.method = "min"))
+
+        best_fits <- which(rowSums(ranks_fits) %in%  min(rowSums(ranks_fits)))
+        select_win <- max(compare_bins_segs$peak_win[best_fits])
+
+        seg.s1 <- breaks_chr_list[[as.character(select_win)]]
+
+        mut.tab <- mutation.table(
+            seqz.data, mufreq.treshold = mufreq.treshold,
             min.reads = min.reads, min.reads.normal = min.reads.normal,
             max.mut.types = max.mut.types, min.type.freq = min.type.freq,
             min.fw.freq = min.fw.freq, segments = seg.s1)
@@ -193,10 +227,13 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
             normal = breaks_normal_chr, tumor = breaks_tumor_chr)
 
         if (verbose) {
-            message('   ', nrow(mut.tab), ' variant calls.', appendLF = TRUE)
-            message('   ', nrow(seg.s1), ' copy-number segments.', appendLF = TRUE)
-            message('   ', nrow(seqz.het), ' heterozygous positions.', appendLF = TRUE)
-            message('   ', sum(seqz.hom), ' homozygous positions.', appendLF = TRUE)
+            message("   ", nrow(mut.tab), " variant calls.", appendLF = TRUE)
+            message("   ", nrow(seg.s1), " copy-number segments.",
+                appendLF = TRUE)
+            message("   ", nrow(seqz.het), " heterozygous positions.",
+                appendLF = TRUE)
+            message("   ", sum(seqz.hom), " homozygous positions.",
+                appendLF = TRUE)
         }
     }
     names(windows.baf)   <- chromosome.list

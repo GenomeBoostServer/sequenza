@@ -1,4 +1,5 @@
-find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name, verbose) {
+find_breaks <- function(seqz.baf, slide_win, peak_win, arms,
+    chr_name, verbose) {
     chromosome <- gsub(x = seqz.baf$chromosome,
         pattern = "chr", replacement = "")
     chromosome <- paste0("chr", chromosome)
@@ -29,14 +30,73 @@ find_breaks <- function(seqz.baf, slide_win, peak_win, arms, chr_name, verbose) 
          }
     })
     breaks <- do.call(rbind, breaks)
-    not.uniq <- which(breaks$end.pos == c(breaks$start.pos[-1],0))
+    not.uniq <- which(breaks$end.pos == c(breaks$start.pos[-1], 0))
     breaks$end.pos[not.uniq] <- breaks$end.pos[not.uniq] - 1
     breaks
 }
 
+slide_tracks <- function(seqz.baf, slide_win,
+    signal_out = c("both", "ratio", "baf"), verbose = TRUE) {
+    signal_out <- match.arg(arg = signal_out,
+        choices = signal_out)
+    chromosome <- gsub(x = seqz.baf$chromosome,
+        pattern = "chr", replacement = "")
+    chromosome <- paste0("chr", chromosome)
+    if (signal_out %in% c("both", "ratio")) {
+        if (verbose) {
+            message("Segmenting depth ratios")
+        }
+        ratio_diffs <- slide_matrix(
+            seqz.baf$adjusted.ratio, w = slide_win,
+            position = seqz.baf$position, verbose = verbose)
+    }
+
+    if (signal_out %in% c("both", "baf")) {
+        if (verbose) {
+            message("Segmenting allele frequencies")
+        }
+        bf_diffs <- slide_matrix(
+            seqz.baf$Bf, w = slide_win,
+        position = seqz.baf$position, verbose = verbose)
+    }
+
+    if (signal_out == "both") {
+        data.frame(y = (ratio_diffs$y + bf_diffs$y) / 2,
+            x = ratio_diffs$x)
+    } else if (signal_out == "baf") {
+        bf_diffs
+    } else {
+        ratio_diffs
+    }
+}
+
+peaks_tracks <- function(diff_track, peak_win, arms,
+    chr_name, verbose) {
+    peaks <- get_gaps_peaks(
+        x = diff_track$y, position = diff_track$x,
+        w = peak_win, arms = arms)
+    breaks <- lapply(peaks, FUN = function(peaks) {
+         coords <- peaks
+         if (is.null(coords)) {
+           NULL
+         } else {
+           pos_start <- coords[-length(coords)]
+           pos_end <- coords[-1]
+           data.frame(
+             chrom = chr_name, start.pos = pos_start,
+             end.pos = pos_end)
+         }
+    })
+    breaks <- do.call(rbind, breaks)
+    not_uniq <- which(breaks$end.pos == c(breaks$start.pos[-1], 0))
+    breaks$end.pos[not_uniq] <- breaks$end.pos[not_uniq] - 1
+    breaks
+}
+
+
 extract_breaks <- function(data, data_het, breaks,
                            slide_win, peak_win, assembly, chromosome,
-                           method = c("het", "full"), verbose = TRUE) {
+                           verbose = TRUE) {
   if (is.null(breaks)) {
       golden_path <- paste("http://hgdownload.cse.ucsc.edu",
                            "goldenPath", assembly, "database",
@@ -53,6 +113,25 @@ extract_breaks <- function(data, data_het, breaks,
       breaks
   }
 }
+
+extract_breaks_tracks <- function(track, breaks,
+    slide_win, peak_win, assembly, chromosome) {
+    if (is.null(breaks)) {
+        golden_path <- paste("http://hgdownload.cse.ucsc.edu",
+            "goldenPath", assembly, "database",
+            "cytoBand.txt.gz", sep = "/")
+        arms <- get_assembly(url = golden_path, prefix = "chr")
+        chr_arm <- gsub(x = chromosome,
+             pattern = "chr", replacement = "")
+        chr_arm <- paste0("chr", chr_arm)
+
+        arms_i <- arms[arms$chromosome == chr_arm, ]
+        peaks_tracks(track, peak_win, arms_i, chromosome)
+  } else {
+      breaks
+  }
+}
+
 
 segment.breaks <- function(seqz.tab, breaks, min.reads.baf = 1,
     weighted.mean = TRUE) {
@@ -139,4 +218,21 @@ segment.breaks <- function(seqz.tab, breaks, min.reads.baf = 1,
     row.names(segments) <- 1:nrow(segments)
     len.seg <- (segments$end.pos - segments$start.pos) / 1e6
     segments[(segments$N.ratio / len.seg) >= 2, ]
+}
+
+compare_bins <- function(start, end, value, bins) {
+    segs_vals <- data.frame(start, end, value)
+    get_segs <- function(start, end, segs) {
+        which(segs$start < end & segs$end > start)
+    }
+    is_similar <- apply(bins, 1, FUN = function(x, segs) {
+        start <- x[1]
+        end <- x[2]
+        q0 <- x[4]
+        q1 <- x[5]
+        indexes <- get_segs(start, end, segs)
+        segs_values <- segs[indexes, "value"]
+        all(segs_values >= q0 & segs_values <= q1)
+    }, segs = segs_vals)
+    sum(is_similar, na.rm = TRUE) / length(na.exclude(is_similar))
 }
