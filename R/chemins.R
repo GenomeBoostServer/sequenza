@@ -25,7 +25,7 @@ get_assembly <- function(name, url = NULL, prefix = "chr") {
         file_path <- url
     }
     cytobands <- read_tsv(file_path, col_types = "ciicc",
-            col_names = c("chromosome", "start", "end", "cytoband", "type"))
+        col_names = c("chromosome", "start", "end", "cytoband", "type"))
     arms <- do.call(
         rbind, lapply(split(cytobands, cytobands$chromosome), get_arms))
     arms$chromosome <- str_replace(arms$chromosome, "^chr", prefix)
@@ -74,12 +74,13 @@ get_gaps_peaks <- function(x, w = 100, position = NULL, arms) {
                 breaks <- tibble(start.pos = pos_start, end.pos = pos_end)
 
                 breaks <- add_row(breaks, start.pos = min(position[index]),
-                                  end.pos = coords[1] - 1, .before = 1)
-                breaks <- add_row(breaks, start.pos = coords[length(coords)] + 1,
-                                  end.pos = max(position[index]))
+                    end.pos = coords[1] - 1, .before = 1)
+                breaks <- add_row(breaks,
+                    start.pos = coords[length(coords)] + 1,
+                    end.pos = max(position[index]))
             } else (
                 breaks <- tibble(start.pos = min(position[index]),
-                                 end.pos = max(position[index]))
+                    end.pos = max(position[index]))
             )
             breaks
         }
