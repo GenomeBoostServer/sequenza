@@ -326,7 +326,7 @@ genome.view <- function(seg.cn, info.type = "AB", ...) {
 }
 
 plotRawGenome <- function(sequenza.extract, cellularity,
-    ploidy, CNt.max = 7, main = "", mirror.BAF = TRUE, ...){
+    ploidy, CNt.max = 7, main = "", mirror.BAF = TRUE, ...) {
     max.end <- sapply(sequenza.extract$ratio, FUN = function(x) {
         max(x$end, na.rm = TRUE)
     })
@@ -390,7 +390,7 @@ plotRawGenome <- function(sequenza.extract, cellularity,
     segments(x0 = segs.new$start.pos, x1 = segs.new$end.pos,
         y0 = (segs.new$depth.ratio), y1 = (segs.new$depth.ratio),
         col = "red", lwd = 2, lend = 1)
-    if (!missing(ploidy) & !missing(cellularity)){
+    if (!missing(ploidy) & !missing(cellularity)) {
         types <- baf.types.matrix(CNt.min = 0, CNt.max = CNt.max, CNn = 2)
         depth.ratios <- baf.model.points(cellularity = cellularity,
             ploidy = ploidy, avg.depth.ratio = avg.depth.ratio,
@@ -446,4 +446,45 @@ baf.model.view <- function(cellularity, ploidy, segs,
         pch = 1, cex = 1, col = segs$col[s.big])
     points(x = segs$Bf[!s.big], y = segs$depth.ratio[!s.big], pch = ".",
         cex = 1, col = segs$col[!s.big])
+}
+
+plot_peaks_win <- function(rank_wins_peak, ...) {
+    op <- par()
+    par(mfrow = c(1, 2))
+    select_color <- "green"
+    point_sizes <- setNames(rep(as.numeric(par()["cex"]), times = nrow(
+        rank_wins_peak$peak_win)),
+        as.character(rank_wins_peak$peak_win$peak_win))
+    win_colors <- setNames(rep("gray", times = nrow(
+        rank_wins_peak$peak_win)),
+        as.character(rank_wins_peak$peak_win$peak_win))
+    selected_index <- which(
+        rank_wins_peak$peak_win$peak_win ==
+            rank_wins_peak$selected_win)
+    point_sizes[selected_index] <- 2 * point_sizes[selected_index]
+    win_colors[selected_index] <- select_color
+    range_fits <- range(
+        c(rank_wins_peak$peak_win$baf_fit, rank_wins_peak$peak_win$ratio_fit),
+        na.rm = TRUE)
+    plot(x = rank_wins_peak$peak_win$peak_win,
+        y = rank_wins_peak$peak_win$baf_fit,
+        ylim = range_fits, type = "b", las = 2, pch = 21, bg = win_colors,
+        col = "blue", xlab = "Window size (data points) for break detection",
+        ylab = "(%) quartiled data fitting with segmentation",
+        cex = point_sizes, ...)
+    lines(x = rank_wins_peak$peak_win$peak_win,
+        y = rank_wins_peak$peak_win$ratio_fit,
+        type = "b", pch = 21, bg = win_colors, col = "red",
+        cex = point_sizes)
+    legend("topright", c("baf fit", "depth ratio fit", "selected"),
+        lty = c(1, 1, NA), pch = c(NA, NA, 21),
+        col = c("blue", "red", "black"), pt.bg = c(NA, NA, select_color),
+        pt.cex = c(NA, NA, point_sizes[selected_index]), bty = "n")
+
+    barplot(setNames(rank_wins_peak$peak_win$n_segs,
+        as.character(rank_wins_peak$peak_win$peak_win)), las = 2,
+        xlab = "Window size (data points) for break detection",
+        ylab = "Nuber of segments", col = win_colors)
+    legend("topright", c("selected window size"),
+        fill = select_color, bty = "n")
 }

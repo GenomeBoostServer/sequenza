@@ -16,6 +16,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     chrw.file <- make_filename("chromosome_view.pdf")
     depths.file <- make_filename("chromosome_depths.pdf")
     gc.file <- make_filename("gc_plots.pdf")
+    peak_win.file <- make_filename("peak_windows_plots.pdf")
     geno.file <- make_filename("genome_view.pdf")
     cn.file <- make_filename("CN_bars.pdf")
     fit.file <- make_filename("model_fit.pdf")
@@ -38,7 +39,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     }
 
     pdf(gc.file, width = 10, height = 5)
-    par(mfrow=c(1, 2))
+    par(mfrow = c(1, 2))
     gc.summary.plot(sequenza.extract$gc$normal, mean.col = "lightsalmon",
         median.col = "lightgreen", las = 1, xlab = "GC %", ylab = "Depth",
         zlab = "N", main = "GC vs raw depth in the normal sample")
@@ -184,6 +185,12 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
             segments = seg.res[seg.res$chromosome == i, ],
             avg.depth.ratio = avg.depth.ratio, CNn = CNn, min.N.ratio = 1)
     }
+    dev.off()
+    pdf(peak_win.file, height = 5, width = 8)
+        for (i in unique(seg.res$chromosome)) {
+            plot_peaks_win(sequenza.extract$win_peaks[[i]],
+                main = i)
+        }
     dev.off()
     pdf(geno.file, height = 5, width = 15)
     if (sum(!is.na(seg.res$A)) > 0) {

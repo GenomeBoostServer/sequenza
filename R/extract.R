@@ -17,6 +17,12 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     parallel = 1, gc.stats = NULL, segments.samples = FALSE,
     smooth_gc = TRUE, min_times_gc = 20, gc_grid = 250) {
 
+    pbo <- pboptions()
+
+    if (verbose == FALSE) {
+        pboptions(type = "none")
+    }
+
     if (is.null(gc.stats)) {
         gc.stats <- gc.sample.stats(file, verbose = verbose,
             parallel = parallel, smooth = smooth_gc, min_times = min_times_gc,
@@ -235,6 +241,8 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         norm.gc.list[[which(chromosome.list == chr)]] <- norm.gc.stats
         segments_samples.list[[which(chromosome.list == chr)]] <- list(
             normal = breaks_normal_chr, tumor = breaks_tumor_chr)
+        rank_peaks.list[[which(chromosome.list == chr)]] <- list(
+            selected_win = select_win, peak_win = compare_bins_segs)
 
         if (verbose) {
             message("   ", nrow(mut.tab), " variant calls.", appendLF = TRUE)
@@ -256,6 +264,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     names(mutation.list) <- chromosome.list
     names(segments.list) <- chromosome.list
     names(segments_samples.list) <- chromosome.list
+    names(rank_peaks.list) <- chromosome.list
 
     gc_norm <- unfold_gc(do.call(rbind, norm.gc.list), stats = FALSE,
         smooth = smooth_gc, min_times = min_times_gc,
@@ -278,6 +287,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         avg_depth_ratio <- (avg_tum_ndepth / avg_tum_depth) /
             (avg_nor_ndepth / avg_nor_depth)
     }
+    pboptions(pbo)
 
     list(BAF = windows.baf, ratio = windows.ratio,
         raw_ratio = windows.raw_ratio,
@@ -288,5 +298,5 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         chromosomes = chromosome.list, gc = gc.stats,
         gc_norm = gc_norm, avg.depth.ratio = avg_depth_ratio,
         avg.depth.tumor = avg_tum_depth, avg.depth.normal = avg_nor_depth,
-        segments_samples = segments_samples.list)
+        segments_samples = segments_samples.list, win_peaks = rank_peaks.list)
 }

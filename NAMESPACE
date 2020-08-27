@@ -57,8 +57,9 @@ importFrom("squash",
 )
 
 importFrom("pbapply",
+    "pbapply",
     "pblapply",
-    "pbapply"
+    "pboptions"
 )
 
 importFrom("squash",
