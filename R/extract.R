@@ -14,11 +14,13 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
     breaks = NULL, assembly = "hg19", weighted.mean = TRUE,
     normalization.method = "mean", ignore.normal = FALSE,
-    parallel = 1, gc.stats = NULL, segments.samples = FALSE) {
+    parallel = 1, gc.stats = NULL, segments.samples = FALSE,
+    smooth_gc = TRUE, min_times_gc = 20, gc_grid = 250) {
 
     if (is.null(gc.stats)) {
         gc.stats <- gc.sample.stats(file, verbose = verbose,
-            parallel = parallel)
+            parallel = parallel, smooth = smooth_gc, min_times = min_times_gc,
+                cl = parallel, n = gc_grid)
     }
     if (normalization.method == "mean") {
         gc.normal.vect <- mean_gc(gc.stats$normal)
@@ -35,6 +37,12 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         avg_nor_depth <- weighted.median(x = gc.stats$normal$depth,
             w = colSums(gc.stats$normal$n))
     }
+    gc_glm_normal <- glm(depth ~ gc, data = data.frame(
+        gc = gc.stats$normal$gc, depth = gc.normal.vect))
+
+    gc_glm_tumor <- glm(depth ~ gc, data = data.frame(
+        gc = gc.stats$tumor$gc, depth = gc.tumor.vect))
+
     windows.baf   <- list()
     windows.ratio <- list()
     windows.raw_ratio <- list()
@@ -42,6 +50,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     windows.tumor <- list()
     windows.n_normal <- list()
     windows.n_tumor <- list()
+    rank_peaks.list <- list()
     mutation.list <- list()
     segments.list <- list()
     segments_samples.list <- list()
@@ -69,9 +78,10 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         }
 
         norm_tumor_depth <- seqz.data$depth.tumor /
-            gc.tumor.vect[as.character(seqz.data$GC.percent)]
+            predict(gc_glm_tumor, data.frame(gc = seqz.data$GC.percent))
         norm_normal_depth <- seqz.data$depth.normal /
-            gc.normal.vect[as.character(seqz.data$GC.percent)]
+            predict(gc_glm_normal, data.frame(gc = seqz.data$GC.percent))
+
         norm.gc.stats <- depths_gc(
             depth_n = round(norm_normal_depth * avg_nor_depth, 0),
             depth_t = round(norm_tumor_depth * avg_tum_depth, 0),
@@ -247,8 +257,9 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     names(segments.list) <- chromosome.list
     names(segments_samples.list) <- chromosome.list
 
-
-    gc_norm <- unfold_gc(do.call(rbind, norm.gc.list), stats = FALSE)
+    gc_norm <- unfold_gc(do.call(rbind, norm.gc.list), stats = FALSE,
+        smooth = smooth_gc, min_times = min_times_gc,
+        cl = parallel, grid_size = gc_grid)
 
     if (normalization.method == "mean") {
         avg_tum_ndepth <- weighted.mean(x = gc_norm$tumor$depth,

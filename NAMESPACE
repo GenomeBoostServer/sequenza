@@ -57,13 +57,15 @@ importFrom("squash",
 )
 
 importFrom("pbapply",
-    "pblapply"
+    "pblapply",
+    "pbapply"
 )
 
 importFrom("squash",
     "colorgram",
     "makecmap"
 )
+
 importFrom("iotools",
     "mstrsplit",
     "chunk.apply"
@@ -77,6 +79,10 @@ importFrom("seqminer",
     "tabix.read"
 )
 
+importFrom("MASS",
+    "kde2d"
+)
+
 importFrom("grDevices",
     "colorRampPalette",
     "dev.off",
@@ -86,6 +92,7 @@ importFrom("grDevices",
     "pdf",
     "rgb"
 )
+
 importFrom("graphics",
     "abline",
     "axis",
@@ -103,11 +110,13 @@ importFrom("graphics",
     "strwidth",
     "text"
 )
+
 importFrom("stats",
     "dbinom",
     "density",
     "dpois",
     "dt",
+    "glm",
     "median",
     "na.exclude",
     "quantile",
@@ -115,6 +124,7 @@ importFrom("stats",
     "setNames",
     "weighted.mean"
 )
+
 importFrom("utils",
     "packageVersion",
     "read.delim",
