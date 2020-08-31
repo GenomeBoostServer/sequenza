@@ -43,11 +43,16 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         avg_nor_depth <- weighted.median(x = gc.stats$normal$depth,
             w = colSums(gc.stats$normal$n))
     }
-    gc_glm_normal <- glm(depth ~ gc, data = data.frame(
-        gc = gc.stats$normal$gc, depth = gc.normal.vect))
 
-    gc_glm_tumor <- glm(depth ~ gc, data = data.frame(
-        gc = gc.stats$tumor$gc, depth = gc.tumor.vect))
+    gc_spline_normal <- smooth.spline(
+        data.frame(
+            gc = as.numeric(names(gc.normal.vect)),
+            depth = gc.normal.vect))
+    gc_spline_tumor <- smooth.spline(
+        data.frame(
+            gc = as.numeric(names(gc.tumor.vect)),
+            depth = gc.tumor.vect))
+
 
     windows.baf   <- list()
     windows.ratio <- list()
@@ -84,9 +89,9 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         }
 
         norm_tumor_depth <- seqz.data$depth.tumor /
-            predict(gc_glm_tumor, data.frame(gc = seqz.data$GC.percent))
+            predict(gc_spline_tumor, seqz.data$GC.percent)$y
         norm_normal_depth <- seqz.data$depth.normal /
-            predict(gc_glm_normal, data.frame(gc = seqz.data$GC.percent))
+            predict(gc_spline_normal, seqz.data$GC.percent)$y
 
         norm.gc.stats <- depths_gc(
             depth_n = round(norm_normal_depth * avg_nor_depth, 0),
