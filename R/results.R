@@ -56,7 +56,8 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     pdf(depths.file, height = 10, width = 15)
     for (i in unique(seg.tab$chromosome)) {
         max_coord_chr_i <- max(sequenza.extract$ratio[[i]]$end)
-        par(mfcol = c(3, 2), xaxt = "n", mar = c(0, 4, 3, 0), oma = c(5, 0, 4, 0))
+        par(mfcol = c(3, 2), xaxt = "n", mar = c(0, 4, 3, 0),
+            oma = c(5, 0, 4, 0))
         plotWindows(sequenza.extract$depths$raw$normal[[i]],
             ylab = "normal depth", ylim = c(0, 2.5),
             main = paste("raw", i, sep = " "))

@@ -66,8 +66,9 @@ get_gaps_peaks <- function(x, w = 100, position = NULL, arms) {
     apply(arms, 1, FUN = function(arm) {
         index <- between(position, as.numeric(arm["start"]),
             as.numeric(arm["end"]))
-        if(sum(index) > 0) {
-            coords <- get_peaks(x = x[index], position = position[index], w = w)
+        if (sum(index) > 0) {
+            coords <- get_peaks(x = x[index],
+                position = position[index], w = w)
             if (length(coords) > 0) {
                 pos_start <- coords[-length(coords)]
                 pos_end <- coords[-1]

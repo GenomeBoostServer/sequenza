@@ -105,6 +105,9 @@ DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, boo
 IntegerVector get_peaks(arma::vec x, IntegerVector position, int w = 100) {
     int w_half = std::round(w / 2);
     int N = x.n_elem;
+    if (N <= w_half ) {
+        w_half = N / 2;
+    }
     IntegerVector res(N - w_half);
     int ri = 0;
     for (int i = w_half; i < (N - w_half); i++){
