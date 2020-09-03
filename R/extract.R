@@ -8,7 +8,7 @@
 #     parallel = 1; gc.stats = NULL; segments.samples = FALSE
 
 sequenza.extract <- function(file, window = 1e6, overlap = 1,
-    slide_win = 100, peak_wins = seq(from = 50, to = 300, by = 25),
+    slide_win = 100, peak_wins = seq(from = 0.0005, to = 0.05, by = 0.005),
     mufreq.treshold = 0.10, min.reads = 40, min.reads.normal = 10,
     min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
     min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
@@ -175,14 +175,16 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
                 na.rm = TRUE), end = max(seqz.data$position, na.rm = TRUE),
                 mean = 0, q0 = 0,  q1 = 0, N = 1)
         }
-        diff_track <- slide_tracks(seqz.het, slide_win,
-            signal_out = "both", verbose = verbose)
+        #diff_track <- slide_tracks(seqz.het, slide_win,
+        #    signal_out = "both", verbose = verbose)
         breaks_chr_list <- lapply(peak_wins, FUN = function(
             x, data, data_het, breaks, slide_win,
             assembly, chromosome, verbose,
             min.reads.baf, weighted.mean) {
+            # breaks_chr <- extract_breaks_tracks(
+            #     track = diff_track, breaks = breaks,
             breaks_chr <- extract_breaks_tracks(
-                track = diff_track, breaks = breaks,
+                track = data_het, breaks = breaks,
                 peak_win = x, assembly = assembly,
                 chromosome = chr)
             if (class(breaks_chr) == "try-error") {
