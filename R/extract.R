@@ -8,7 +8,7 @@
 #     parallel = 1; gc.stats = NULL; segments.samples = FALSE
 
 sequenza.extract <- function(file, window = 1e6, overlap = 1,
-    slide_win = 100, peak_wins = seq(from = 0.0005, to = 0.05, by = 0.005),
+    slide_win = 100, peak_wins = seq(from = 50, to = 300, by = 25),
     mufreq.treshold = 0.10, min.reads = 40, min.reads.normal = 10,
     min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
     min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
