@@ -271,7 +271,8 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     names(segments_samples.list) <- chromosome.list
     names(rank_peaks.list) <- chromosome.list
 
-    gc_norm <- unfold_gc(do.call(rbind, norm.gc.list), stats = FALSE,
+    gc_norm <- unfold_gc(cbind(unique = 0, lines = 0,
+        do.call(rbind, norm.gc.list)), stats = FALSE,
         smooth = smooth_gc, min_times = min_times_gc,
         cl = parallel, grid_size = gc_grid)
 

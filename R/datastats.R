@@ -17,7 +17,7 @@ unfold_data <- function(
     if (stats) {
         ord_chrom <- unique(Reduce("c", Reduce("c", x[, "unique"])))
         stats_chrom <- Reduce("c", x[, "lines"])
-        stats_chrom <- sapply(sequenza:::splash_table(x[, "lines"]), sum)
+        stats_chrom <- sapply(splash_table(x[, "lines"]), sum)
         stats_chrom <- stats_chrom[ord_chrom]
         stats_start <- cumsum(c(1, stats_chrom[-length(stats_chrom)]))
         stats_end   <- stats_start + stats_chrom - 1
@@ -44,13 +44,13 @@ data_fast_stats <- function(file, col_types = "c--dd----d----",
         x <- read_tsv(file = paste(mstrsplit(x), collapse = "\n"),
             col_types = col_types, col_names = FALSE,
             skip = 0, n_max = Inf, progress = FALSE)
-        n_chr <- table(x[, 1])
-        u_chr <- names(n_chr)
+        u_chr <- unique(x[, 1])
+-       n_chr <- table(x[, 1])
         set_lists <- lapply(sets, f, y = x, args = args_f)
         if (verbose) {
             message(".", appendLF = FALSE)
         }
-        c(list(unique = u_chr, lines = n_chr), set_lists)
+        c(list(unique = u_chr, lines = n_chr[u_chr]), set_lists)
     }
     if (verbose) {
         message(msg, appendLF = FALSE)

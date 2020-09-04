@@ -15,7 +15,7 @@ mean_gc <- function(gc_list) {
 depths_gc <- function(depth_n, depth_t, gc) {
     gc_nor <- lapply(split(depth_n, gc), table)
     gc_tum <- lapply(split(depth_t, gc), table)
-    list(gc_nor = gc_nor, gc_tum = gc_tum)
+    list(normal = gc_nor, tumor = gc_tum)
 }
 
 gc_data_smooth <- function(gc_list, min_times = 20, n = 100,
@@ -109,4 +109,26 @@ unfold_gc <- function(x, stats = FALSE, smooth = TRUE, min_times = 20,
         "min_times" = min_times, "grid_size" = grid_size,
         "scale_subset" = 1.5)
     unfold_data(x = x, f = do_get_gc, args_f = get_gc_args, stats = stats)
+}
+
+unfold_gc_old <- function(x, stats = TRUE, smooth = TRUE,
+    min_times = 20, grid_size = 100, scale.subset = 1.5, ...) {
+    gc_norm <- get_gc(x[, "gc_nor"], smooth, min_times,
+        grid_size, scale.subset, ...)
+    gc_tum <- get_gc(x[, "gc_tum"], smooth, min_times,
+        grid_size, scale.subset, ...)
+    if (stats) {
+        ord_chrom <- unique(Reduce("c", Reduce("c", x[, "unique"])))
+        stats_chrom <- Reduce("c", x[, "lines"])
+        stats_chrom <- sapply(splash_table(x[, "lines"]), sum)
+        stats_chrom <- stats_chrom[ord_chrom]
+        stats_start <- cumsum(c(1, stats_chrom[-length(stats_chrom)]))
+        stats_end   <- stats_start + stats_chrom - 1
+        stats_chrom <- data.frame(chr = ord_chrom, n_lines = stats_chrom,
+            start = stats_start, end = stats_end)
+
+        list(file.metrics = stats_chrom, normal = gc_norm, tumor = gc_tum)
+    } else {
+        list(normal = gc_norm, tumor = gc_tum)
+    }
 }
