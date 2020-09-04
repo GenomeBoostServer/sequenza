@@ -45,12 +45,12 @@ data_fast_stats <- function(file, col_types = "c--dd----d----",
             col_types = col_types, col_names = FALSE,
             skip = 0, n_max = Inf, progress = FALSE)
         u_chr <- unique(x[, 1])
--       n_chr <- table(x[, 1])
+        n_chr <- table(x[, 1])
         set_lists <- lapply(sets, f, y = x, args = args_f)
         if (verbose) {
             message(".", appendLF = FALSE)
         }
-        c(list(unique = u_chr, lines = n_chr[u_chr]), set_lists)
+        c(list(unique = u_chr, lines = n_chr), set_lists)
     }
     if (verbose) {
         message(msg, appendLF = FALSE)
