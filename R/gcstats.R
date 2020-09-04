@@ -72,23 +72,23 @@ get_gc <- function(gc_col, smooth = TRUE,
     }
 }
 
+gc_table <- function(x, y, args) {
+    lapply(split(y[, x[1]],
+        y[, x[2]]), table)
+}
+
+do_get_gc <- function(x, args) {
+    smooth <- args[["smooth"]]
+    min_times <- args[["min_times"]]
+    grid_size <- args[["grid_size"]]
+    scale_subset <- args[["scale_subset"]]
+    get_gc(x, smooth = smooth, min_times = min_times,
+        grid_size = grid_size, scale.subset = scale_subset)
+}
+
 gc.sample.stats <- function(file, col_types = "c--dd----d----",
     buffer = 33554432, parallel = 2L, stats = TRUE, smooth = TRUE,
     min_times = 20, n = 100, scale.subset = 1.5, verbose = TRUE, ...) {
-
-    gc_table <- function(x, y, args) {
-        lapply(split(y[, x[1]],
-            y[, x[2]]), table)
-    }
-
-    do_get_gc <- function(x, args) {
-        smooth <- args[["smooth"]]
-        min_times <- args[["min_times"]]
-        grid_size <- args[["grid_size"]]
-        scale_subset <- args[["scale_subset"]]
-        get_gc(x, smooth = smooth, min_times = min_times,
-            grid_size = grid_size, scale.subset = scale_subset)
-    }
 
     get_gc_args <- list("smooth" = smooth,
         "min_times" = min_times, "grid_size" = n,
@@ -101,4 +101,12 @@ gc.sample.stats <- function(file, col_types = "c--dd----d----",
         f1 = gc_table, f2 = do_get_gc,
         args_f1 = list(), args_f2 = get_gc_args,
         msg = "Collecting GC information ")
+}
+
+unfold_gc <- function(x, stats = FALSE, smooth = TRUE, min_times = 20,
+        cl = 2L, grid_size = 100) {
+    get_gc_args <- list("smooth" = smooth,
+        "min_times" = min_times, "grid_size" = grid_size,
+        "scale_subset" = 1.5)
+    unfold_data(x = x, f = do_get_gc, args_f = get_gc_args, stats = stats)
 }
