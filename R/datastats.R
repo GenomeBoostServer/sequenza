@@ -58,7 +58,7 @@ data_fast_stats <- function(file, col_types = "c--dd----d----",
     res <- chunk.apply(
         input = con, FUN = function(x, col_types, sets, f, args) {
             parse_chunck(
-                ßx, col_types = col_types, sets = sets, f = f, args)
+                x, col_types = col_types, sets = sets, f = f, args)
         }, col_types = col_types, sets = col_sets, f = f1, args = args_f1,
         CH.MAX.SIZE = buffer, parallel = parallel)
     close(con)
