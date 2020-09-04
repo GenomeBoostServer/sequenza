@@ -56,11 +56,6 @@ importFrom("squash",
     "makecmap"
 )
 
-importFrom("rpart",
-    "rpart",
-    "rpart.control"
-)
-
 importFrom("pbapply",
     "pbapply",
     "pblapply",

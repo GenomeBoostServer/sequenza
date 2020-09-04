@@ -175,16 +175,14 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
                 na.rm = TRUE), end = max(seqz.data$position, na.rm = TRUE),
                 mean = 0, q0 = 0,  q1 = 0, N = 1)
         }
-        #diff_track <- slide_tracks(seqz.het, slide_win,
-        #    signal_out = "both", verbose = verbose)
+        diff_track <- slide_tracks(seqz.het, slide_win,
+            signal_out = "both", verbose = verbose)
         breaks_chr_list <- lapply(peak_wins, FUN = function(
             x, data, data_het, breaks, slide_win,
             assembly, chromosome, verbose,
             min.reads.baf, weighted.mean) {
-            # breaks_chr <- extract_breaks_tracks(
-            #     track = diff_track, breaks = breaks,
             breaks_chr <- extract_breaks_tracks(
-                track = data_het, breaks = breaks,
+                track = diff_track, breaks = breaks,
                 peak_win = x, assembly = assembly,
                 chromosome = chr)
             if (class(breaks_chr) == "try-error") {

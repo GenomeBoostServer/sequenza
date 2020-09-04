@@ -87,35 +87,3 @@ get_gaps_peaks <- function(x, w = 100, position = NULL, arms) {
         }
     })
 }
-
-get_peaks_rpart <- function(x, w = 0.05) {
-    mod_rp <- rpart((adjusted.ratio * Bf) ~ position,
-        data = x, control = rpart.control(cp = w))
-    x$position[abs(diff(predict(mod_rp, data.frame(
-        position = x$position)))) > 0]
-}
-
-get_gaps_rpart <- function(x, y, w = 0.01, position = NULL, arms) {
-    apply(arms, 1, FUN = function(arm) {
-        index <- between(position, as.numeric(arm["start"]),
-            as.numeric(arm["end"]))
-        if (sum(index) > 0) {
-            coords <- get_peaks_rpart(x = x[index, ], w = w)
-            if (length(coords) > 0) {
-                pos_start <- coords[-length(coords)]
-                pos_end <- coords[-1]
-                breaks <- tibble(start.pos = pos_start, end.pos = pos_end)
-
-                breaks <- add_row(breaks, start.pos = min(position[index]),
-                    end.pos = coords[1] - 1, .before = 1)
-                breaks <- add_row(breaks,
-                    start.pos = coords[length(coords)] + 1,
-                    end.pos = max(position[index]))
-            } else (
-                breaks <- tibble(start.pos = min(position[index]),
-                    end.pos = max(position[index]))
-            )
-            breaks
-        }
-    })
-}

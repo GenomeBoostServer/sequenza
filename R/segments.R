@@ -72,14 +72,8 @@ slide_tracks <- function(seqz.baf, slide_win,
 
 peaks_tracks <- function(diff_track, peak_win, arms,
     chr_name, verbose) {
-    # peaks <- get_gaps_peaks(
-    #     x = diff_track$y, position = diff_track$x,
-    #     w = peak_win, arms = arms)
-
-    peaks <- get_gaps_rpart(data.frame(
-        position = diff_track$position,
-        adjusted.ratio = diff_track$adjusted.ratio,
-        Bf = diff_track$Bf), position = diff_track$position,
+    peaks <- get_gaps_peaks(
+        x = diff_track$y, position = diff_track$x,
         w = peak_win, arms = arms)
 
     breaks <- lapply(peaks, FUN = function(peaks) {
