@@ -146,16 +146,16 @@ get_baf_ratio <- function(baf_col, smooth = TRUE,
 # gc_glm_tumor <- smooth.spline(data.frame(
 #     gc = as.numeric(names(gc.tumor.vect)), depth = gc.tumor.vect))
 
-ratio_args <- list(
-    "lm_normal" = gc_glm_normal,
-    "lm_tumor" = gc_glm_tumor,
-    "round_dr" = 1,
-    "round_bf" = 2
-)
+# ratio_args <- list(
+#     "lm_normal" = gc_glm_normal,
+#     "lm_tumor" = gc_glm_tumor,
+#     "round_dr" = 1,
+#     "round_bf" = 2
+# )
 
-get_gc_defaults <- list("smooth" = TRUE,
-    "min_times" = 5, "grid_size" = 250,
-    "scale_subset" = 10)
+# get_gc_defaults <- list("smooth" = TRUE,
+#     "min_times" = 5, "grid_size" = 250,
+#     "scale_subset" = 10)
 
 
 
