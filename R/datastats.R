@@ -63,39 +63,10 @@ data_fast_stats <- function(file, col_types = "c--dd----d----",
         CH.MAX.SIZE = buffer, parallel = parallel)
     close(con)
     if (verbose) {
-        message(" done\n")
+        message(" done")
     }
     #res 
     unfold_data(x = res, f = f2, args_f = args_f2, stats = stats)
-}
-
-
-
-do_ratio <- function(x, y, args) {
-    lm_normal <- args[["lm_normal"]]
-    lm_tumor <- args[["lm_tumor"]]
-    round_r <- args[["round_dr"]]
-    round_b <- args[["round_bf"]]
-    colnames(y)[x] <- names(x)
-    y <- y[y$zyg == "het", ]
-    norm_tumor_depth <- y$tumor /
-        predict(lm_tumor, y$gc)$y
-    norm_normal_depth <- y$normal /
-        predict(lm_normal, y$gc)$y
-    d_r <- round(norm_tumor_depth / norm_normal_depth, round_r)
-    baf <- round(y$baf, round_b)
-
-    lapply(split(c(d_r, d_r), c(baf, 1 - baf)), table)
-}
-
-
-do_get_ratio_baf <- function(x, args) {
-    smooth <- args[["smooth"]]
-    min_times <- args[["min_times"]]
-    grid_size <- args[["grid_size"]]
-    scale_subset <- args[["scale_subset"]]
-    get_baf_ratio(x, smooth = smooth, min_times = min_times,
-            grid_size = grid_size, scale.subset = scale_subset) 
 }
 
 get_baf_ratio <- function(baf_col, smooth = TRUE,
@@ -118,7 +89,7 @@ get_baf_ratio <- function(baf_col, smooth = TRUE,
         names_ratios = names_ratios))
     n[is.na(n)] <- 0
     if (smooth == TRUE) {
-        part <- sequenza:::gc_data_smooth(list(
+        part <- gc_data_smooth(list(
             gc = as.numeric(names_baf), depth = as.numeric(
                 names_ratios), n = n),
             min_times = min_times, n = grid_size,
@@ -131,39 +102,55 @@ get_baf_ratio <- function(baf_col, smooth = TRUE,
     }
 }
 
+baf_ratio_raster <- function(file_name, gc_normal, gc_tumor, verbose = TRUE,
+    min_times = 20, smooth = TRUE, grid_size = 100, scale.subset = 4,
+    round_baf = 2, round_ratio = 1) {
 
-# zzz <- data_fast_stats(data.file)
+    ratio_args <- list(
+        "model_normal" = gc_normal,
+        "model_tumor" = gc_tumor,
+        "round_dr" = round_ratio,
+        "round_bf" = round_baf
+    )
 
-# gc.normal.vect <- mean_gc(zzz$normal)
-# gc.tumor.vect <- mean_gc(zzz$tumor)
+    get_gc_defaults <- list("smooth" = smooth,
+        "min_times" = min_times, "grid_size" = grid_size,
+        "scale_subset" = scale.subset)
+
+    do_ratio <- function(x, y, args) {
+        model_normal <- args[["model_normal"]]
+        model_tumor <- args[["model_tumor"]]
+        round_r <- args[["round_dr"]]
+        round_b <- args[["round_bf"]]
+        colnames(y)[x] <- names(x)
+        y <- y[y$zyg == "het", ]
+        norm_tumor_depth <- y$tumor /
+            predict(model_tumor, y$gc)$y
+        norm_normal_depth <- y$normal /
+            predict(model_normal, y$gc)$y
+        d_r <- round(norm_tumor_depth / norm_normal_depth, round_r)
+        baf <- round(y$baf, round_b)
+
+        lapply(split(c(d_r, d_r), c(baf, 1 - baf)), table)
+    }
 
 
+    do_get_ratio_baf <- function(x, args) {
+        smooth <- args[["smooth"]]
+        min_times <- args[["min_times"]]
+        grid_size <- args[["grid_size"]]
+        scale_subset <- args[["scale_subset"]]
+        get_baf_ratio(x, smooth = smooth, min_times = min_times,
+                grid_size = grid_size, scale.subset = scale_subset) 
+    }
 
-# gc_glm_normal <- smooth.spline(data.frame(
-#     gc = as.numeric(names(gc.normal.vect)), depth = gc.normal.vect))
-
-
-# gc_glm_tumor <- smooth.spline(data.frame(
-#     gc = as.numeric(names(gc.tumor.vect)), depth = gc.tumor.vect))
-
-# ratio_args <- list(
-#     "lm_normal" = gc_glm_normal,
-#     "lm_tumor" = gc_glm_tumor,
-#     "round_dr" = 1,
-#     "round_bf" = 2
-# )
-
-# get_gc_defaults <- list("smooth" = TRUE,
-#     "min_times" = 5, "grid_size" = 250,
-#     "scale_subset" = 10)
-
-
-
-# zz2 <- data_fast_stats(data.file, col_types = "---dd--dcd----",
-#     stats = FALSE, verbose = TRUE, col_sets = list("dr" = c(
-#         "normal" = 1, "tumor" = 2, "baf" = 3, "zyg" = 4, "gc" = 5)),
-#     f1 = do_ratio, f2 = do_get_ratio_baf, args_f1 = ratio_args,
-#     msg = "Collecting BAF/raio information")
+    data_fast_stats(file_name, col_types = "---dd--dcd----",
+        stats = FALSE, verbose = verbose, col_sets = list("dr" = c(
+            "normal" = 1, "tumor" = 2, "baf" = 3, "zyg" = 4, "gc" = 5)),
+        f1 = do_ratio, f2 = do_get_ratio_baf, args_f1 = ratio_args,
+        args_f2 = get_gc_defaults,
+        msg = "Collecting BAF/ratio information ")
+}
 
 rs_baf_ratio <- function(dens, n = 100, min_prob = 1) {
     df_r <- approxfun(density(rep(dens$y, times = colSums(dens$z))))

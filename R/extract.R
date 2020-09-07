@@ -53,6 +53,12 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
             gc = as.numeric(names(gc.tumor.vect)),
             depth = gc.tumor.vect))
 
+    ratio_baf_raster <- baf_ratio_raster(
+        file_name = file, gc_normal = gc_spline_normal,
+        gc_tumor = gc_spline_tumor, verbose = verbose,
+        min_times = min_times_gc, smooth = smooth_gc,
+        grid_size = gc_grid, scale.subset = 4,
+        round_baf = 2, round_ratio = 1)
 
     windows.baf   <- list()
     windows.ratio <- list()
@@ -304,5 +310,6 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         chromosomes = chromosome.list, gc = gc.stats,
         gc_norm = gc_norm, avg.depth.ratio = avg_depth_ratio,
         avg.depth.tumor = avg_tum_depth, avg.depth.normal = avg_nor_depth,
-        segments_samples = segments_samples.list, win_peaks = rank_peaks.list)
+        segments_samples = segments_samples.list, win_peaks = rank_peaks.list,
+        ratio_baf_raster = ratio_baf_raster$dr)
 }
