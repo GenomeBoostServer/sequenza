@@ -103,7 +103,7 @@ get_baf_ratio <- function(baf_col, smooth = TRUE,
 }
 
 baf_ratio_raster <- function(file_name, gc_normal, gc_tumor, verbose = TRUE,
-    min_times = 20, smooth = TRUE, grid_size = 100, scale.subset = 4,
+    min_times = 20, smooth = TRUE, grid_size = 100, scale.subset = 2.5,
     round_baf = 2, round_ratio = 1) {
 
     ratio_args <- list(
@@ -128,8 +128,10 @@ baf_ratio_raster <- function(file_name, gc_normal, gc_tumor, verbose = TRUE,
             predict(model_tumor, y$gc)$y
         norm_normal_depth <- y$normal /
             predict(model_normal, y$gc)$y
-        d_r <- round(norm_tumor_depth / norm_normal_depth, round_r)
-        baf <- round(y$baf, round_b)
+        d_r <- round(
+            norm_tumor_depth / norm_normal_depth / 0.5,
+            digits = round_r) * 0.5
+        baf <- round(y$baf / 0.5, digits = round_b) * 0.5
 
         lapply(split(c(d_r, d_r), c(baf, 1 - baf)), table)
     }
@@ -174,4 +176,79 @@ rs_baf_ratio <- function(dens, n = 100, min_prob = 1) {
         l = df_b(
             sample_b) / max(p_bs) * df_r(sample_r) / max(p_rs))
     res[res[, 3] >= min_prob, 1:2]
+}
+
+find_flex_points <- function(dens_list, f_threshold = 0.2) {
+    flex_points_index <- which(
+        diff(sign(diff(dens_list$z))) == -2, arr.ind = TRUE)
+    flex_points <- cbind(
+        baf = dens_list$x[flex_points_index[, 1]],
+        ratio = dens_list$y[flex_points_index[, 2]],
+        l = dens_list$z[flex_points_index])
+    flex_points <- flex_points[flex_points[, 1] <= 0.5, ]
+    flex_points[, 3] <- flex_points[, 3] / max(dens_list$z)
+    flex_points[flex_points[, 3] >= f_threshold, ]
+}
+
+mat_avg_peak <- function(x, min_diff = 0) {
+    m_row <- nrow(x)
+    m_col <- ncol(x)
+    res_m <- matrix(0, nrow = m_row, ncol = m_col)
+    for (i in 2:(m_col - 1)) {
+        for (j in 2:(m_row - 1)) {
+            ij_val <- x[j, i]
+            left_cell_idx <-  c(j, i - 1)
+            right_cell_idx <- c(j, i + 1)
+            up_cell_idx <- c(j + 1, i)
+            down_cell_idx <- c(j - 1, i)
+            res_m[j, i] <- mean(c(
+                ij_val - x[left_cell_idx[1], left_cell_idx[2]],
+                ij_val - x[right_cell_idx[1], right_cell_idx[2]],
+                ij_val - x[up_cell_idx[1], up_cell_idx[2]],
+                ij_val - x[down_cell_idx[1], down_cell_idx[2]]
+            ))
+        }
+    }
+    res_m
+}
+
+mat_local_max <- function(x, min_diff = 0) {
+    m_row <- nrow(x)
+    m_col <- ncol(x)
+    res_m <- matrix(0, nrow = m_row, ncol = m_col)
+    for (i in 2:(m_col - 1)) {
+        for (j in 2:(m_row - 1)) {
+            ij_val <- x[j, i]
+            left_cell_idx <-  c(j, i - 1)
+            right_cell_idx <- c(j, i + 1)
+            up_cell_idx <- c(j + 1, i)
+            down_cell_idx <- c(j - 1, i)
+            diff_vect <- c(
+                ij_val - x[left_cell_idx[1], left_cell_idx[2]],
+                ij_val - x[right_cell_idx[1], right_cell_idx[2]],
+                ij_val - x[up_cell_idx[1], up_cell_idx[2]],
+                ij_val - x[down_cell_idx[1], down_cell_idx[2]]
+            )
+            if (all(diff_vect >= min_diff)) {
+                res_m[j, i] <- 1
+            } else {
+                res_m[j, i] <- 0
+            }
+        }
+    }
+    res_m
+}
+
+
+find_local_max <- function(dens_list, f_threshold = 0.2) {
+    z_max <-  mat_local_max(dens_list$z)
+    max_points_index <- which(z_max == 1, arr.ind = TRUE)
+    flex_points <- cbind(
+        baf = dens_list$x[max_points_index[, 1]],
+        ratio = dens_list$y[max_points_index[, 2]],
+        l = dens_list$z[max_points_index])
+    flex_points <- flex_points[
+        round(flex_points[, 1], 2) <= 0.5, ]
+    flex_points[, 3] <- flex_points[, 3] / max(dens_list$z)
+    flex_points[flex_points[, 3] >= f_threshold, ]
 }

@@ -15,7 +15,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     breaks = NULL, assembly = "hg19", weighted.mean = TRUE,
     normalization.method = "mean", ignore.normal = FALSE,
     parallel = 1, gc.stats = NULL, segments.samples = FALSE,
-    smooth_gc = TRUE, min_times_gc = 20, gc_grid = 250) {
+    smooth_gc = TRUE, min_times_gc = 5, gc_grid = 250) {
 
     pbo <- pboptions()
 
@@ -57,7 +57,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         file_name = file, gc_normal = gc_spline_normal,
         gc_tumor = gc_spline_tumor, verbose = verbose,
         min_times = min_times_gc, smooth = smooth_gc,
-        grid_size = gc_grid, scale.subset = 4,
+        grid_size = gc_grid, scale.subset = 2.5,
         round_baf = 2, round_ratio = 1)
 
     windows.baf   <- list()

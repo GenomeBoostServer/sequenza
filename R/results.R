@@ -2,13 +2,13 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     sample.id, out.dir = getwd(), cellularity = NULL, ploidy = NULL,
     female = TRUE, CNt.max = 20, ratio.priority = FALSE,
     XY = c(X = "X", Y = "Y"), chromosome.list = 1:24){
-    if(!file.exists(out.dir)) {
+    if (!file.exists(out.dir)) {
         dir.ok <- dir.create(path = out.dir, recursive = TRUE)
-        if(!dir.ok) {
+        if (!dir.ok) {
             stop("Directory does not exist and cannot be created: ", out.dir)
         }
     }
-    make_filename <- function(x){
+    make_filename <- function(x) {
         file.path(out.dir, paste(sample.id, x, sep = "_"))
     }
     cp.file   <- make_filename("CP_contours.pdf")
@@ -17,6 +17,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     depths.file <- make_filename("chromosome_depths.pdf")
     gc.file <- make_filename("gc_plots.pdf")
     peak_win.file <- make_filename("peak_windows_plots.pdf")
+    peak_dens.file <- make_filename("peak_density_plots.pdf")
     geno.file <- make_filename("genome_view.pdf")
     cn.file <- make_filename("CN_bars.pdf")
     fit.file <- make_filename("model_fit.pdf")
@@ -90,7 +91,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     }
     dev.off()
 
-    if (!is.null(cp.table)){
+    if (!is.null(cp.table)) {
         assign(x = paste0(sample.id, "_sequenza_cp_table"), value = cp.table)
         save(list = paste0(sample.id, "_sequenza_cp_table"), file = robj.fit)
         cint <- get.ci(cp.table)
@@ -116,10 +117,10 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     }
     mut.tab <- na.exclude(do.call(rbind,
         sequenza.extract$mutations[chromosome.list]))
-    if (female){
+    if (female) {
         segs.is.xy <- seg.tab$chromosome == XY["Y"]
         mut.is.xy <- mut.tab$chromosome == XY["Y"]
-    } else{
+    } else {
         segs.is.xy <- seg.tab$chromosome %in% XY
         mut.is.xy <- mut.tab$chromosome %in% XY
     }
@@ -136,9 +137,9 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
         sd.Bf = seg.tab$sd.BAF[!segs.is.xy],
         weight.Bf = 1, ratio.priority = ratio.priority, CNn = 2)
     seg.res <- cbind(seg.tab[!segs.is.xy, ], cn.alleles)
-    if (!female){
+    if (!female) {
         if (sum(segs.is.xy) >= 1) {
-            cn.alleles  <- baf.bayes(Bf = NA, CNt.max = CNt.max,
+            cn.alleles <- baf.bayes(Bf = NA, CNt.max = CNt.max,
                 depth.ratio = seg.tab$depth.ratio[segs.is.xy],
                 cellularity = cellularity, ploidy = ploidy,
                 avg.depth.ratio = avg.depth.ratio,
@@ -152,13 +153,13 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     write.table(seg.res, file = segs.file, col.names = TRUE,
         row.names = FALSE, sep = "\t", quote = FALSE)
     if (nrow(mut.tab) > 0) {
-        mut.alleles  <- mufreq.bayes(mufreq = mut.tab$F[!mut.is.xy],
+        mut.alleles <- mufreq.bayes(mufreq = mut.tab$F[!mut.is.xy],
             CNt.max = CNt.max,
             depth.ratio = mut.tab$adjusted.ratio[!mut.is.xy],
             cellularity = cellularity, ploidy = ploidy,
             avg.depth.ratio = avg.depth.ratio, CNn = 2)
         mut.res <- cbind(mut.tab[!mut.is.xy, ], mut.alleles)
-        if (!female){
+        if (!female) {
             if (sum(mut.is.xy) >= 1) {
                 mut.alleles <- mufreq.bayes(mufreq = mut.tab$F[mut.is.xy],
                     CNt.max = CNt.max,
@@ -174,7 +175,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     }
     pdf(chrw.file)
     for (i in unique(seg.res$chromosome)) {
-        if (!female && i %in% XY){
+        if (!female && i %in% XY) {
             CNn <- 1
         } else {
             CNn <- 2
@@ -193,6 +194,15 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
                 main = i)
         }
     dev.off()
+    pdf(peak_dens.file, height = 5, width = 5)
+        image(sequenza.extract$ratio_baf_raster, xlim = c(0, 0.505),
+            xlab = "BAF", ylab = "normalised depth-ratio")
+        peaks_dens <- find_local_max(sequenza.extract$ratio_baf_raster)
+        points(peaks_dens[, 1], peaks_dens[, 2],
+            cex = peaks_dens[, 3], pch = 21, bg = "grey")
+
+    dev.off()
+
     pdf(geno.file, height = 5, width = 15)
     if (sum(!is.na(seg.res$A)) > 0) {
         genome.view(seg.res)
@@ -211,7 +221,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     dev.off()
 
     ## Write down the results.... ploidy etc...
-    if (!is.null(cp.table)){
+    if (!is.null(cp.table)) {
         res.tab <- data.frame(cellularity = c(cint$confint.cellularity[1],
             cint$max.cellularity[1], cint$confint.cellularity[2]),
             ploidy.estimate = c(cint$confint.ploidy[1], cint$max.ploidy[1],
@@ -225,12 +235,12 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
         baf.model.view(cellularity = cellularity, ploidy = ploidy,
             segs = seg.res[!segs.is.xy, ])
     dev.off()
-    if (!is.null(cp.table)){
+    if (!is.null(cp.table)) {
         alt.sol <- alternative.cp.solutions(cp.table)
         write.table(alt.sol, file = alt.file, col.names = TRUE,
             row.names = FALSE, sep = "\t", quote = FALSE)
         pdf(afit.file)
-        for (sol in 1:nrow(alt.sol)){
+        for (sol in seq_len(nrow(alt.sol))) {
             baf.model.view(cellularity = alt.sol$cellularity[sol],
                 ploidy = alt.sol$ploidy[sol], segs = seg.res[!segs.is.xy, ])
         }
