@@ -252,3 +252,18 @@ find_local_max <- function(dens_list, f_threshold = 0.2) {
     flex_points[, 3] <- flex_points[, 3] / max(dens_list$z)
     flex_points[flex_points[, 3] >= f_threshold, ]
 }
+
+
+smooth_matrix <- function(x, y, z) {
+    xy <- expand.grid(x, y)
+    weigths_xy <- as.vector(z)
+    z_threshold <- 0
+    xy <- xy[weigths_xy > z_threshold, ]
+    weigths_xy <- weigths_xy[weigths_xy > z_threshold]
+    d <- 2
+    m <- nrow(xy)
+    n <- sum(weigths_xy)
+    H <- Hpi(xy)
+    H <- H * (m / n) ^ (2 / d)
+    kde(x = xy, w = weigths_xy / sum(weigths_xy) * m, H = H)
+}

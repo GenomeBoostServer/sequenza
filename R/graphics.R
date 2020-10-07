@@ -24,6 +24,9 @@ plotWindows <- function(seqz.window, m.lty = 1, m.lwd = 3,
 
 gc.plot <- function(gc_list, range.gc = NULL, range.depth = NULL, ...) {
     n <- gc_list$n
+    if (any(n < 0)) {
+        n <- n + abs(min(n, na.rm = TRUE))
+    }
     n[n == 0] <- NA
     gc <- gc_list$gc
     depth <- gc_list$depth

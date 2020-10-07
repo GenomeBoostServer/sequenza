@@ -80,8 +80,9 @@ importFrom("seqminer",
     "tabix.read"
 )
 
-importFrom("MASS",
-    "kde2d"
+importFrom("ks",
+    "Hpi",
+    "kde"
 )
 
 importFrom("grDevices",

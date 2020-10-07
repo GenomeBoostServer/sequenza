@@ -1,11 +1,18 @@
 median_gc <- function(gc_list) {
+    if (any(gc_list$n < 0)) {
+        gc_list$n <- gc_list$n + abs(min(gc_list$n, na.rm = TRUE))
+    }
     apply(gc_list$n, 1, FUN = function(x, w) {
+
             weighted.median(x = w, w = x, na.rm = TRUE)
         },
         w = gc_list$depth)
 }
 
 mean_gc <- function(gc_list) {
+    if (any(gc_list$n < 0)) {
+        gc_list$n <- gc_list$n + abs(min(gc_list$n, na.rm = TRUE))
+    }
     apply(gc_list$n, 1, FUN = function(x, w) {
             weighted.mean(x = w, w = x, na.rm = TRUE)
         },
@@ -25,22 +32,14 @@ gc_data_smooth <- function(gc_list, min_times = 20, n = 100,
     medgc <- median_gc(gc_list)
     max_depth <- round(max(c(mengc, medgc)) * scale.subset, 0)
 
-    comb_depth_gc <- expand.grid(
-        gc = gc_list$gc,
-        depth = gc_list$depth[gc_list$depth <= max_depth])
-
-    expanded <- pbapply(comb_depth_gc, 1, FUN = function(x, n, t) {
-        times <- n[as.character(x[1]), as.character(x[2])]
-        if (times >= t) {
-            t(matrix(rep(x, times = times / t), nrow = 2))
-        }
-    }, n = gc_list$n, t = min_times, ...)
-    expanded <- do.call(rbind, expanded)
-    regrid <- kde2d(expanded[, 1], expanded[, 2], n = n)
-    n_tab <- regrid$z
-    colnames(n_tab) <- as.character(regrid$y)
-    rownames(n_tab) <- as.character(regrid$x)
-    list(gc = regrid$x, depth = regrid$y, n = n_tab)
+    regrid <- smooth_matrix(x = gc_list$gc,
+        y = gc_list$depth[gc_list$depth <= max_depth],
+        z = gc_list$n[, gc_list$depth <= max_depth])
+    n_tab <- regrid$estimate
+    colnames(n_tab) <- as.character(regrid$eval.points[[2]])
+    rownames(n_tab) <- as.character(regrid$eval.points[[1]])
+    list(gc = regrid$eval.points[[1]],
+        depth = regrid$eval.points[[2]], n = n_tab)
 }
 
 get_gc <- function(gc_col, smooth = TRUE,
