@@ -195,12 +195,20 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
         }
     dev.off()
     pdf(peak_dens.file, height = 5, width = 5)
-        image(sequenza.extract$ratio_baf_raster, xlim = c(0, 0.505),
-            xlab = "BAF", ylab = "normalised depth-ratio")
-        peaks_dens <- find_local_max(sequenza.extract$ratio_baf_raster)
+        image(sequenza.extract$ratio_baf_raster$smooth, xlim = c(0, 0.505),
+            xlab = "BAF", ylab = "normalised depth-ratio",
+            main = "Smoothed densitt")
+        peaks_dens <- find_local_max(sequenza.extract$ratio_baf_raster$smooth,
+            f_threshold = 0.05)
         points(peaks_dens[, 1], peaks_dens[, 2],
             cex = peaks_dens[, 3], pch = 21, bg = "grey")
-
+        image(sequenza.extract$ratio_baf_raster$raster, xlim = c(0, 0.505),
+            xlab = "BAF", ylab = "normalised depth-ratio",
+            main = "Binned data")
+        peaks_dens <- find_local_max(sequenza.extract$ratio_baf_raster$raster,
+            f_threshold = 0.05)
+        points(peaks_dens[, 1], peaks_dens[, 2],
+            cex = peaks_dens[, 3], pch = 21, bg = "grey")
     dev.off()
 
     pdf(geno.file, height = 5, width = 15)

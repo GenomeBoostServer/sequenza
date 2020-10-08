@@ -95,10 +95,14 @@ get_baf_ratio <- function(baf_col, smooth = TRUE,
             min_times = min_times, n = grid_size,
             scale.subset = scale.subset, ...)
         names(part) <- c("x", "y", "z")
-        part
+        list(raster = list(
+                x = as.numeric(names_baf),
+                y = as.numeric(names_ratios),
+                z = n),
+            smooth = part)
     } else {
-        list(baf = as.numeric(names_baf), ratio = as.numeric(
-            names_ratios), n = n)
+        list(x = as.numeric(names_baf), y = as.numeric(
+            names_ratios), z = n)
     }
 }
 
