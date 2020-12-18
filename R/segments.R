@@ -101,7 +101,7 @@ extract_breaks <- function(data, data_het, breaks,
   if (is.null(breaks)) {
       golden_path <- paste("http://hgdownload.cse.ucsc.edu",
                            "goldenPath", assembly, "database",
-                           "cytoBand.txt.gz", sep = "/")
+                           "cytoBandIdeo.txt.gz", sep = "/")
       arms <- get_assembly(url = golden_path, prefix = "chr")
       chr_arm <- gsub(x = chromosome,
                       pattern = "chr", replacement = "")
