@@ -21,7 +21,7 @@ Authors@R: c(
           role = c("aut", "ths"),
           comment = c(ORCID = "0000-0003-0861-1001"))
   )
-Depends: R (>= 3.6.0)
+Depends: R (>= 3.2.0)
 LinkingTo: Rcpp, RcppArmadillo, RcppProgress
 Imports: Rcpp, stringr, dplyr, tibble, readr, pbapply, squash, iotools, seqminer, ks
 Suggests: testthat, knitr, rmarkdown, rmdformats
