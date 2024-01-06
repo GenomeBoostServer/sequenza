@@ -60,7 +60,7 @@ data_fast_stats <- function(file, col_types = "c--dd----d----",
             parse_chunck(
                 x, col_types = col_types, sets = sets, f = f, args)
         }, col_types = col_types, sets = col_sets, f = f1, args = args_f1,
-        CH.MAX.SIZE = buffer, parallel = parallel)
+        CH.MAX.SIZE = buffer, CH.PARALLEL = parallel)
     close(con)
     if (verbose) {
         message(" done")
