@@ -1,3 +1,17 @@
+
+select_chromosomes_with_centromere <- function(assembly, all_sequences) {
+    golden_path <- paste("http://hgdownload.cse.ucsc.edu",
+        "goldenPath", assembly, "database",
+        "cytoBand.txt.gz", sep = "/")
+    arms <- get_assembly(golden_path, prefix = "chr")
+    chromosomes <-  unique(arms[arms$arm != "n", ]$chromosome)
+    select_sequences <- all_sequences %in% chromosomes
+    if (sum(select_sequences) == 0) {
+        select_sequences <- paste0("chr", all_sequences) %in% chromosomes
+    }
+    all_sequences[select_sequences]
+}
+
 get_arms <- function(chromosome) {
     chrom <- chromosome$chromosome[1]
     start <- min(chromosome$start)

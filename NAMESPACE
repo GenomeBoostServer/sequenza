@@ -39,7 +39,9 @@ importFrom("stringr",
 )
 
 importFrom("readr",
-    "read_tsv"
+    "DataFrameCallback",
+    "read_tsv",
+    "read_tsv_chunked"
 )
 
 importFrom("dplyr",
@@ -48,6 +50,7 @@ importFrom("dplyr",
 
 importFrom("tibble",
     "tibble",
+    "as_tibble",
     "add_row"
 )
 
@@ -77,6 +80,7 @@ importFrom("readr",
 )
 
 importFrom("seqminer",
+    "tabix.read.table",
     "tabix.read"
 )
 

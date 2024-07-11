@@ -7,8 +7,9 @@ mut.fractions <- function(AB.tumor, Af, tumor.strand) {
         unlist(strsplit(as.character(x), split = "[:]"))
     })
     frequencify <- function (x) {
-        base.name <- substr(unlist(x), 1, 1)
-        base.val  <- as.numeric(substr(unlist(x), 2, nchar(x)))
+        split_data <- unlist(strsplit(unlist(x),  split=".", fixed=T))
+        base.name <- substr(split_data[1], 1, nchar(split_data[1])-1)
+        base.val  <- as.numeric(paste("0", split_data[2], sep="."))
         setNames(base.val, base.name)
     }
     base.freqs <- lapply(X = base.mut, FUN = frequencify)
@@ -60,8 +61,8 @@ mutation.table <- function(seqz.tab, mufreq.treshold = 0.15,
         if (!is.na(min.fw.freq)) {
             fw.2 <- 1 - min.fw.freq
             fw.2 <- sort(c(fw.2, min.fw.freq))
-            fw.filt     <- mu.fracts$fw.freq > fw.2[1] &
-                mu.fracts$fw.freq < fw.2[2]
+            fw.filt     <- mu.fracts$fw.freq >= fw.2[1] &
+                mu.fracts$fw.freq <= fw.2[2]
             mufreq.filt <- mufreq.filt & type.filt  & prop.filt & fw.filt
         } else {
             mufreq.filt <- mufreq.filt & type.filt  & prop.filt

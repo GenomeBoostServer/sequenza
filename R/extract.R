@@ -12,7 +12,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     mufreq.treshold = 0.10, min.reads = 40, min.reads.normal = 10,
     min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
     min.fw.freq = 0, verbose = TRUE, chromosome.list = NULL,
-    breaks = NULL, assembly = "hg19", weighted.mean = TRUE,
+    breaks = NULL, assembly = "hg38", weighted.mean = TRUE,
     normalization.method = "mean", ignore.normal = FALSE,
     parallel = 1, gc.stats = NULL, segments.samples = FALSE,
     smooth_gc = TRUE, min_times_gc = 5, gc_grid = 250) {
@@ -77,7 +77,16 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     }
     chr.vect <- as.character(gc.stats$file.metrics$chr)
     if (is.null(chromosome.list)) {
-        chromosome.list <- chr.vect
+        ## NOTE: instead using all the chromosomes in the seqz
+        ## we download the assembly from goldenpath
+        ## -or use a cached verion (TODO)- and use only the chromosomes
+        ## with a centromere.
+        ## A special attentions need to be taken to the "chr" previx
+        ## The workflow need also to be optimized since we will use the same
+        ## resource later, it could be fetched once and used also downstream
+        #chromosome.list <- chr.vect
+
+        chromosome.list <- select_chromosomes_with_centromere(assembly, chr.vect)
     } else {
         chromosome.list <- chromosome.list[chromosome.list %in% chr.vect]
     }
@@ -85,14 +94,9 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         if (verbose) {
             message("Processing ", chr, ":", appendLF = TRUE)
         }
-        tbi <- file.exists(paste0(file, ".tbi"))
-        if (tbi) {
-            seqz.data   <- read.seqz(file, chr_name = chr)
-        } else {
-            file.lines <- gc.stats$file.metrics[which(chr.vect == chr), ]
-            seqz.data   <- read.seqz(file, n_lines = c(file.lines$start,
-                file.lines$end))
-        }
+        file.lines <- gc.stats$file.metrics[which(chr.vect == chr), ]
+        seqz.data   <- read.seqz(file, n_lines = c(file.lines$start,
+            file.lines$end),  chr_name = chr)
 
         norm_tumor_depth <- seqz.data$depth.tumor /
             predict(gc_spline_tumor, seqz.data$GC.percent)$y

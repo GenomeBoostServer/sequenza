@@ -180,10 +180,30 @@ chromosome.view <- function(baf.windows, ratio.windows, mut.tab = NULL,
             "C>T" = rgb(red = 255, green = 215, blue = 0,
                 alpha = 120, maxColorValue = 255),
             "G>A" = rgb(red = 255, green = 215, blue = 0,
+                alpha = 120, maxColorValue = 255),
+            "Ins" = rgb(red = 47, green = 79, blue = 79,
+                alpha = 120, maxColorValue = 255),
+            "Dels" = rgb(red = 169, green = 169, blue = 169,
                 alpha = 120, maxColorValue = 255))
+        mutation_types <- unlist(lapply(strsplit(as.character(mut.tab$mutation), split=">"), FUN=function(x) {
+            if (length(x) == 2) {
+                ref_len <- nchar(x[1])
+                alt_len <- nchar(x[2])
+                if (ref_len == alt_len) {
+                    paste(x[1], x[2], sep=">")
+                } else {
+                    if (ref_len > alt_len) {
+                        "Dels"
+                    } else {
+                        "Ins"
+                   }
+                }
+            }
+        }))
+
         plot(x = mut.tab$position, y = mut.tab$F,
             ylab = "Mutant allele frequency", las = 1, pch = 19,
-            col = c(mutation.colors, "NA" = NA)[as.character(mut.tab$mutation)],
+            col = c(mutation.colors, "NA" = NA)[as.character(mutation_types)],
             ylim = c(min(mut.tab$F, na.rm = TRUE), 1), xlim = xlim)
         unique.colors <- unique(mutation.colors)
         labels <- sapply(unique.colors, function(a) {
