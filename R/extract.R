@@ -15,7 +15,7 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
     breaks = NULL, assembly = "hg38", weighted.mean = TRUE,
     normalization.method = "mean", ignore.normal = FALSE,
     parallel = 1, gc.stats = NULL, segments.samples = FALSE,
-    smooth_gc = TRUE, min_times_gc = 5, gc_grid = 250) {
+    smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, do_raster = FALSE) {
 
     pbo <- pboptions()
 
@@ -52,13 +52,16 @@ sequenza.extract <- function(file, window = 1e6, overlap = 1,
         data.frame(
             gc = as.numeric(names(gc.tumor.vect)),
             depth = gc.tumor.vect))
-
-    ratio_baf_raster <- baf_ratio_raster(
-        file_name = file, gc_normal = gc_spline_normal,
-        gc_tumor = gc_spline_tumor, verbose = verbose,
-        min_times = min_times_gc, smooth = smooth_gc,
-        grid_size = gc_grid, scale.subset = 2.5,
-        round_baf = 2, round_ratio = 1)
+    if (do_raster) {
+        ratio_baf_raster <- baf_ratio_raster(
+            file_name = file, gc_normal = gc_spline_normal,
+            gc_tumor = gc_spline_tumor, verbose = verbose,
+            min_times = min_times_gc, smooth = do_raster,
+            grid_size = gc_grid, scale.subset = 2.5,
+            round_baf = 2, round_ratio = 1)
+    } else {
+        ratio_baf_raster <- data.frame("dr" = NULL)
+    }
 
     windows.baf   <- list()
     windows.ratio <- list()
