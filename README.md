@@ -89,7 +89,7 @@ library(sequenza)
 In the package is provided a small *seqz* file
 
 ``` r
-data.file <-  system.file("data", "example.seqz.txt.gz", package = "sequenza")
+data.file <-  system.file("extdata", "example.seqz.txt.gz", package = "sequenza")
 data.file
 ```
 
