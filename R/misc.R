@@ -1,9 +1,9 @@
 dt2 <- function(x, df, ncp, log = FALSE, mean, sd) {
-    x2 <- (x - mean) / sd
+    x2 <- (x - mean)/sd
     dt(x2, df = df, ncp = ncp, log = log)
 }
 
-split_chr_coord <- function (x) {
+split_chr_coord <- function(x) {
     # Ensure that there is a start and a end coordinate
     split_chr <- strsplit(x, split = ":")[[1]]
     chromosome <- split_chr[1]
@@ -14,18 +14,19 @@ split_chr_coord <- function (x) {
     if (is.na(start)) {
         start <- 1
     }
-    if (is.na(end)){
+    if (is.na(end)) {
         end <- 2147483647
     }
     paste0(chromosome, ":", start, "-", end)
 }
 
-weighted.median <- function(x, w, na.rm=TRUE, ties=NULL) {
+weighted.median <- function(x, w, na.rm = TRUE, ties = NULL) {
     if (missing(w)) {
         w <- rep(1, length(x))
     }
     if (na.rm == TRUE) {
-        keep <- !(is.na(x) | is.na(w));
+        keep <- !(is.na(x) |
+            is.na(w))
         x <- x[keep]
         w <- w[keep]
     } else if (any(is.na(x))) {
@@ -58,9 +59,9 @@ weighted.median <- function(x, w, na.rm=TRUE, ties=NULL) {
     w <- w[ord]
     wcum <- cumsum(w)
     wsum <- wcum[n]
-    wmid <- wsum / 2
+    wmid <- wsum/2
     lows <- (wcum <= wmid)
-    k  <- sum(lows)
+    k <- sum(lows)
 
     if (k == 0) {
         return(x[1])
@@ -69,10 +70,10 @@ weighted.median <- function(x, w, na.rm=TRUE, ties=NULL) {
         return(x[n])
     }
 
-    wlow  <- wcum[k]
+    wlow <- wcum[k]
     whigh <- wsum - wlow
     if (whigh > wmid) {
         return(x[k + 1])
     }
-    (wlow * x[k] + whigh * x[k + 1]) / wsum
+    (wlow * x[k] + whigh * x[k + 1])/wsum
 }
