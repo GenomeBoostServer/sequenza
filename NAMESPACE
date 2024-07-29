@@ -12,6 +12,7 @@ export(
     gc.sample.stats,
     gc.summary.plot,
     get.ci,
+    gibbs,
     mean_gc,
     median_gc,
     mufreq.bayes,
@@ -31,8 +32,15 @@ export(
     windowValues
 )
 
-import("Rcpp")
+importFrom("Rcpp",
+    "evalCpp",
+    "cpp_object_initializer"
+)
 
+importFrom("Runuran",
+    "ars.new",
+    "ur"
+)
 
 importFrom("stringr",
     "str_replace"
@@ -62,7 +70,9 @@ importFrom("squash",
 importFrom("pbapply",
     "pbapply",
     "pblapply",
-    "pboptions"
+    "pboptions",
+    "timerProgressBar",
+    "closepb"
 )
 
 importFrom("squash",
