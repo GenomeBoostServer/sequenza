@@ -197,71 +197,91 @@ sequenza.extract <- function(
                 mean = 0, q0 = 0, q1 = 0, N = 1
             )
         }
-        diff_track <- slide_tracks(
-            seqz.het, slide_win, signal_out = "both", verbose = verbose
-        )
-        breaks_chr_list <- lapply(
-            peak_wins, FUN = function(
-                x, data, data_het, breaks, slide_win, assembly,
-                chromosome, verbose, min.reads.baf, weighted.mean
-            ) {
-                breaks_chr <- extract_breaks_tracks(
-                  track = diff_track, breaks = breaks, peak_win = x,
-                  assembly = assembly, chromosome = chr
-              )
-                if (class(breaks_chr) ==
-                  "try-error") {
-                  breaks_chr <- NULL
-                }
-                if (is.null(breaks_chr) ||
-                  nrow(breaks_chr) ==
-                    0 || length(breaks_chr) ==
-                  0) {
-                  breaks_chr <- data.frame(
-                    chrom = chr, start.pos = min(seqz.data$position, na.rm = TRUE),
-                    end.pos = max(seqz.data$position, na.rm = TRUE)
+        if (is.null(breaks_chr)) {
+            diff_track <- slide_tracks(
+                seqz.het, slide_win, signal_out = "both", verbose = verbose
+            )
+            breaks_chr_list <- lapply(
+                peak_wins, FUN = function(
+                  x, data, data_het, breaks, slide_win, assembly,
+                  chromosome, verbose, min.reads.baf, weighted.mean
+              ) {
+                  breaks_chr <- extract_breaks_tracks(
+                    track = diff_track, breaks = breaks, peak_win = x,
+                    assembly = assembly, chromosome = chr
                 )
-                }
-                segment.breaks(
-                  seqz.tab = data, breaks = breaks_chr, min.reads.baf = min.reads.baf,
-                  weighted.mean = weighted.mean
-              )
+                  if (class(breaks_chr) ==
+                    "try-error") {
+                    breaks_chr <- NULL
+                  }
+                  if (is.null(breaks_chr) ||
+                    nrow(breaks_chr) ==
+                      0 || length(breaks_chr) ==
+                    0) {
+                    breaks_chr <- data.frame(
+                      chrom = chr, start.pos = min(seqz.data$position, na.rm = TRUE),
+                      end.pos = max(seqz.data$position, na.rm = TRUE)
+                  )
+                  }
+                  segment.breaks(
+                    seqz.tab = data, breaks = breaks_chr, min.reads.baf = min.reads.baf,
+                    weighted.mean = weighted.mean
+                )
 
-            }, data = seqz.data, data_het = seqz.het, breaks = breaks_chr,
-            slide_win = slide_win, assembly = assembly, chromosome = chr,
-            verbose = verbose, min.reads.baf = min.reads.baf,
-            weighted.mean = weighted.mean
-        )
+                }, data = seqz.data, data_het = seqz.het, breaks = breaks_chr,
+                slide_win = slide_win, assembly = assembly, chromosome = chr,
+                verbose = verbose, min.reads.baf = min.reads.baf,
+                weighted.mean = weighted.mean
+            )
 
-        names(breaks_chr_list) <- as.character(peak_wins)
+            names(breaks_chr_list) <- as.character(peak_wins)
 
-        compare_bins_list <- lapply(
-            breaks_chr_list, FUN = function(x, baf_win, ratio_win) {
-                baf_vs_bins <- compare_bins(x$start.pos, x$end.pos, x$Bf, baf_win)
-                ratio_vs_bins <- compare_bins(x$start.pos, x$end.pos, x$depth.ratio, ratio_win)
-                cbind(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
-            }, baf_win = seqz.b.win[[chr]], ratio_win = seqz.r.win[[chr]]
-        )
+            compare_bins_list <- lapply(
+                breaks_chr_list, FUN = function(x, baf_win, ratio_win) {
+                  baf_vs_bins <- compare_bins(x$start.pos, x$end.pos, x$Bf, baf_win)
+                  ratio_vs_bins <- compare_bins(x$start.pos, x$end.pos, x$depth.ratio, ratio_win)
+                  cbind(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
+                }, baf_win = seqz.b.win[[chr]], ratio_win = seqz.r.win[[chr]]
+            )
 
-        compare_bins_segs <- data.frame(peak_win = peak_wins, do.call(rbind, compare_bins_list))
-        compare_bins_segs$n_segs <- sapply(breaks_chr_list, nrow)
+            compare_bins_segs <- data.frame(peak_win = peak_wins, do.call(rbind, compare_bins_list))
+            compare_bins_segs$n_segs <- sapply(breaks_chr_list, nrow)
 
-        ranks_fits <- cbind(
-            apply(
-                -compare_bins_segs[, c("baf_fit", "ratio_fit")],
-                2, rank, ties.method = "max"
-            ),
-            n_segs = rank(compare_bins_segs$n_segs, ties.method = "min")
-        )
+            ranks_fits <- cbind(
+                apply(
+                  -compare_bins_segs[, c("baf_fit", "ratio_fit")],
+                  2, rank, ties.method = "max"
+              ),
+                n_segs = rank(compare_bins_segs$n_segs, ties.method = "min")
+            )
 
-        best_fits <- which(
-            rowSums(ranks_fits) %in%
-                min(rowSums(ranks_fits))
-        )
-        select_win <- max(compare_bins_segs$peak_win[best_fits])
+            best_fits <- which(
+                rowSums(ranks_fits) %in%
+                  min(rowSums(ranks_fits))
+            )
+            select_win <- max(compare_bins_segs$peak_win[best_fits])
 
-        seg.s1 <- breaks_chr_list[[as.character(select_win)]]
+            seg.s1 <- breaks_chr_list[[as.character(select_win)]]
+        } else {
 
+            seg.s1 <- segment.breaks(
+                seqz.tab = seqz.data, breaks = breaks_chr, min.reads.baf = min.reads.baf,
+                weighted.mean = weighted.mean
+            )
+            select_win <- 0
+            compare_bins_segs <- data.frame(
+                peak_win = 0, baf_fit = compare_bins(
+                  seg.s1$start.pos, seg.s1$end.pos, seg.s1$Bf,
+                  seqz.b.win[[chr]]
+              ),
+                ratio_fit = compare_bins(
+                  seg.s1$start.pos, seg.s1$end.pos, seg.s1$depth.ratio,
+                  seqz.r.win[[chr]]
+              ),
+                n_segs = nrow(seg.s1)
+            )
+
+        }
         mut.tab <- mutation.table(
             seqz.data, mufreq.treshold = mufreq.treshold, min.reads = min.reads,
             min.reads.normal = min.reads.normal, max.mut.types = max.mut.types,
