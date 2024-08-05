@@ -293,3 +293,144 @@ compare_bins <- function(start, end, value, bins) {
     )
     sum(is_similar, na.rm = TRUE)/length(na.exclude(is_similar))
 }
+
+merge_segments_clusters <- function(segs, clusters) {
+    breaks <- list()
+    last_clust <- NULL
+    for (i in 1:nrow(segs)) {
+        if (is.null(last_clust)) {
+            breaks[[1]] <- c(segs$start.pos[i], segs$end.pos[i])
+            last_clust <- clusters[i]
+        } else {
+            if (last_clust == clusters[i]) {
+                breaks[[length(breaks)]][2] <- segs$end.pos[i]
+                last_clust <- clusters[i]
+            } else {
+                breaks[[length(breaks) +
+                  1]] <- c(segs$start.pos[i], segs$end.pos[i])
+                last_clust <- clusters[i]
+            }
+        }
+    }
+    do.call(
+        rbind, lapply(
+            breaks, FUN = function(x) c(
+                min(x),
+                max(x)
+            )
+        )
+    )
+}
+
+cluster_segments <- function(bf, depth_ratio, init_clust = 10, ...) {
+    x <- cbind(bf, depth_ratio)
+    sequenza:::gibbs(
+        t(x),
+        z_init = sample(
+            1:init_clust, nrow(x),
+            replace = T
+        ),
+        ...
+    )
+}
+
+
+process_segments_by_clusters <- function(
+    sequenza_extract, seqz_file, out_path, file_out_prefix, init_n_clust = 10,
+    dp_iter = 1000, pdf_out = FALSE, verbose = FALSE
+) {
+    segs_i <- do.call(rbind, sequenza_extract$segments)
+    gc_stats <- sequenza_extract$gc
+    segs_fitting_ratio <- sapply(
+        sequenza_extract$chromosomes, FUN = function(x, extr) {
+            compare_bins(
+                extr$segments[[x]]$start.pos, extr$segments[[x]]$end.pos,
+                extr$segments[[x]]$depth.ratio, extr$ratio[[x]]
+            )
+        }, extr = sequenza_extract
+    )
+    segs_fitting_baf <- sapply(
+        sequenza_extract$chromosomes, FUN = function(x, extr) {
+            compare_bins(
+                extr$segments[[x]]$start.pos, extr$segments[[x]]$end.pos,
+                extr$segments[[x]]$Bf, extr$BAF[[x]]
+            )
+        }, extr = sequenza_extract
+    )
+    if (pdf_out) {
+        segs_i_clust <- file.path(
+            out_path, paste(
+                file_out_prefix, paste0("iter", i),
+                "reclust.pdf", sep = "_"
+            )
+        )
+        pdf(segs_i_clust)
+    }
+    segs_clust <- cluster_segments(
+        bf = segs_i$Bf, depth_ratio = segs_i$depth.ratio, init_clust = init_n_clust,
+        progressbar = TRUE, iters = dp_iter, plots = pdf_out
+    )
+    if (pdf_out) {
+        dev.off()
+    }
+    segs2 <- cbind(segs_i, cluster = segs_clust$cluster())
+    if (verbose) {
+        message("tot clusters: ", length(unique(segs_clust$cluster())))
+    }
+    segs_split <- split(segs2, f = segs2$chromosome)
+
+    seg_res <- lapply(
+        segs_split, FUN = function(x) {
+            breaks <- merge_segments_clusters(x, x$cluster)
+            chrom <- unique(x$chromosome)
+            res <- data.frame(chrom, breaks)
+            colnames(res) <- c("chrom", "start.pos", "end.pos")
+            res
+        }
+    )
+    seg_res <- do.call(rbind, seg_res)
+    if (verbose) {
+        message("prev. N of segs ", nrow(segs_i))
+        message("new N of segs ", nrow(seg_res))
+    }
+    temp_extract <- sequenza.extract(
+        seqz_file, breaks = seg_res, gc.stats = gc_stats, verbose = verbose
+    )
+    segs_fitting_ratio_i <- sapply(
+        temp_extract$chromosomes, FUN = function(x, extr) {
+            compare_bins(
+                extr$segments[[x]]$start.pos, extr$segments[[x]]$end.pos,
+                extr$segments[[x]]$depth.ratio, extr$ratio[[x]]
+            )
+        }, extr = temp_extract
+    )
+    segs_fitting_baf_i <- sapply(
+        temp_extract$chromosomes, FUN = function(x, extr) {
+            compare_bins(
+                extr$segments[[x]]$start.pos, extr$segments[[x]]$end.pos,
+                extr$segments[[x]]$Bf, extr$BAF[[x]]
+            )
+        }, extr = temp_extract
+    )
+
+    fit_table <- data.frame(
+        chromosome = sequenza_extract$chromosomes, ratio_fit = segs_fitting_ratio[sequenza_extract$chromosomes],
+        baf_fit = segs_fitting_baf[sequenza_extract$chromosomes],
+        N = sapply(
+            sequenza_extract$segments[sequenza_extract$chromosomes],
+            nrow
+        )
+    )
+
+    refit_table <- data.frame(
+        chromosome = temp_extract$chromosomes, ratio_fit = segs_fitting_ratio_i[temp_extract$chromosomes],
+        baf_fit = segs_fitting_baf_i[temp_extract$chromosomes],
+        N = sapply(
+            temp_extract$segments[temp_extract$chromosomes],
+            nrow
+        )
+    )
+    list(
+        extract = temp_extract, fit_table = fit_table, refit_table = refit_table
+    )
+}
