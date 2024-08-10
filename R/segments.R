@@ -338,7 +338,7 @@ cluster_segments <- function(bf, depth_ratio, init_clust = 10, ...) {
 process_segments_by_clusters <- function(
     sequenza_extract, seqz_file, out_path, file_out_prefix, init_n_clust = 10,
     dp_iter = 1000, pdf_out = FALSE, verbose = FALSE
-) {
+, ...) {
     segs_i <- do.call(rbind, sequenza_extract$segments)
     gc_stats <- sequenza_extract$gc
     segs_fitting_ratio <- sapply(
@@ -394,7 +394,7 @@ process_segments_by_clusters <- function(
         message("new N of segs ", nrow(seg_res))
     }
     temp_extract <- sequenza.extract(
-        seqz_file, breaks = seg_res, gc.stats = gc_stats, verbose = verbose
+        seqz_file, breaks = seg_res, gc.stats = gc_stats, verbose = verbose, chromosome.list=sequenza_extract$chromosomes, ...
     )
     segs_fitting_ratio_i <- sapply(
         temp_extract$chromosomes, FUN = function(x, extr) {

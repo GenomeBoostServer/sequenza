@@ -84,12 +84,13 @@ depth_ratio_ccf_likelihood <- function(
     )
 
 }
-plot(
-    seq(0, 1, 0.001),
-    depth_ratio_ccf_likelihood(
-        x = 2.2, CCFs = seq(0, 1, 0.001),
-        CNn = 2, CNt = 4, CNst = 5, cellularity = 1, ploidy = 2,
-        depth = 100
-    ),
-    type = "l"
-)
+
+# plot(
+#     seq(0, 1, 0.001),
+#     depth_ratio_ccf_likelihood(
+#         x = 2.2, CCFs = seq(0, 1, 0.001),
+#         CNn = 2, CNt = 4, CNst = 5, cellularity = 1, ploidy = 2,
+#         depth = 100
+#     ),
+#     type = "l"
+# )
