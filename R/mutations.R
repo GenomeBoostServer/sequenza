@@ -1,64 +1,89 @@
 mut.fractions <- function(AB.tumor, Af, tumor.strand) {
-    F = 1 - Af
-    base.mut <- lapply(
-        X = AB.tumor, FUN = function(x) {
-            unlist(
-                strsplit(
-                  as.character(x),
-                  split = "[:]"
-              )
-            )
-        }
-    )
-    base.fw <- lapply(
-        X = tumor.strand, FUN = function(x) {
-            unlist(
-                strsplit(
-                  as.character(x),
-                  split = "[:]"
-              )
-            )
-        }
-    )
+    # Input validation
+    if (length(AB.tumor) != length(Af) || length(AB.tumor) != length(tumor.strand)) {
+        stop("Input vectors must have equal lengths")
+    }
+    
+    # Calculate complement frequency
+    F <- 1 - Af
+    
+    # Helper function to split strings
+    split_string <- function(x) {
+        unlist(strsplit(as.character(x), split = "[:]"))
+    }
+    
+    # Parse base mutations
+    base.mut <- lapply(AB.tumor, split_string)
+    base.fw <- lapply(tumor.strand, split_string)
+    
+    # Function to extract frequency from split data
     frequencify <- function(x) {
-        split_data <- unlist(
-            strsplit(
-                unlist(x),
-                split = ".", fixed = T
-            )
-        )
-        base.name <- substr(
-            split_data[1], 1, nchar(split_data[1]) -
-                1
-        )
+        # Split the data and handle potential errors
+        split_data <- unlist(strsplit(unlist(x), split = ".", fixed = TRUE))
+        
+        # Validate split data
+        if (length(split_data) < 2) {
+            warning(paste("Invalid data format:", x))
+            return(NULL)
+        }
+        
+        # Extract base name and value
+        base.name <- substr(split_data[1], 1, nchar(split_data[1]) - 1)
         base.val <- as.numeric(paste("0", split_data[2], sep = "."))
+        
         setNames(base.val, base.name)
     }
-    base.freqs <- lapply(X = base.mut, FUN = frequencify)
-    fw.freqs <- lapply(X = base.fw, FUN = frequencify)
-    n.base.mut <- do.call(c, lapply(X = base.mut, FUN = length))
+    
+    # Calculate base frequencies
+    base.freqs <- lapply(base.mut, frequencify)
+    fw.freqs <- lapply(base.fw, frequencify)
+    
+    # Count base mutations
+    n.base.mut <- sapply(base.mut, length)
+    
+    # Find maximum frequency
     max.fq <- function(x) {
-        freq.rel <- base.freqs[[x]]/F[x]
+        # Handle potential NA or NULL values
+        if (is.null(base.freqs[[x]]) || is.null(fw.freqs[[x]])) {
+            return(rep(NA, 4))
+        }
+        
+        freq.rel <- base.freqs[[x]] / F[x]
         f.max <- which.max(freq.rel)
+        
         c(
-            freq.rel[f.max], names(base.freqs[[x]])[f.max],
-            base.freqs[[x]][f.max], fw.freqs[[x]][f.max]
+            freq.rel[f.max], 
+            names(base.freqs[[x]])[f.max],
+            base.freqs[[x]][f.max], 
+            fw.freqs[[x]][f.max]
         )
     }
-    max.freqs <- do.call(
-        rbind, lapply(
-            1:length(F),
-            max.fq
-        )
-    )
-    data.frame(
+    
+    # Apply max frequency function
+    max.freqs <- do.call(rbind, lapply(seq_along(F), max.fq))
+    
+    # Create result dataframe with error checking
+    result <- data.frame(
         base.count = as.integer(n.base.mut),
         maj.base.freq = as.numeric(max.freqs[, 1]),
         base = as.character(max.freqs[, 2]),
         freq = as.numeric(max.freqs[, 3]),
         fw.freq = as.numeric(max.freqs[, 4])
     )
+    
+    # Validate result dataframe
+    if (nrow(result) != length(AB.tumor)) {
+        warning(paste(
+            "Mismatch in result rows. Expected:", 
+            length(AB.tumor), 
+            "Actual:", 
+            nrow(result)
+        ))
+    }
+    
+    return(result)
 }
+
 
 mutation.table <- function(
     seqz.tab, mufreq.treshold = 0.15, min.reads = 40, min.reads.normal = 10,
