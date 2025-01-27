@@ -25,8 +25,7 @@ weighted.median <- function(x, w, na.rm = TRUE, ties = NULL) {
         w <- rep(1, length(x))
     }
     if (na.rm == TRUE) {
-        keep <- !(is.na(x) |
-            is.na(w))
+        keep <- !(is.na(x) | is.na(w))
         x <- x[keep]
         w <- w[keep]
     } else if (any(is.na(x))) {
