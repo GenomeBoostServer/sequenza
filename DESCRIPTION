@@ -4,8 +4,8 @@ Description: Tools to analyze genomic sequencing data from
  paired normal-tumor samples, including cellularity and ploidy estimation; mutation
  and copy number (allele-specific and total copy number) detection, quantification
  and visualization.
-Version: 3.0.0
-Date: 2019-05-09
+Version: 4.0.0
+Date: 2025-01-29
 Authors@R: c(
    person(given = "Francesco", family = "Favero",
           email = "favero.francesco@gmail.com",
@@ -21,7 +21,7 @@ Authors@R: c(
           role = c("aut", "ths"),
           comment = c(ORCID = "0000-0003-0861-1001"))
   )
-Depends: R (>= 3.6.0)
+Depends: R (>= 4.0.0)
 LinkingTo: Rcpp, RcppArmadillo, RcppProgress
 Imports: Rcpp, stringr, dplyr, tibble, readr, pbapply, squash, iotools (>= 0.3-5), seqminer, ks, Runuran
 Suggests: testthat, knitr, rmarkdown, rmdformats
