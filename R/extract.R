@@ -495,46 +495,88 @@ initialize_extract_parameters <- function(file, window, overlap = 1, slide_win =
 }
 
 finalize_extract_results <- function(containers, params, gc_stats, gc_data) {
-  # Name lists
-  for (list_name in names(containers)) {
-    if (length(containers[[list_name]]) == length(params$chromosome.list)) {
-      names(containers[[list_name]]) <- params$chromosome.list
+    # Name lists
+    for (list_name in names(containers)) {
+        if (length(containers[[list_name]]) == length(params$chromosome.list)) {
+            names(containers[[list_name]]) <- params$chromosome.list
+        }
     }
-  }
 
-  # Process GC normalization
-  gc_norm <- unfold_gc(cbind(unique = 0, lines = 0, do.call(rbind, containers$norm.gc.list)),
-    stats = FALSE, smooth = params$smooth_gc, min_times = params$min_times_gc,
-    cl = params$parallel, grid_size = params$gc_grid
-  )
+    # Process GC normalization
+    gc_norm <- unfold_gc(cbind(unique = 0, lines = 0, do.call(rbind, containers$norm.gc.list)),
+        stats = FALSE, smooth = params$smooth_gc, min_times = params$min_times_gc,
+        cl = params$parallel, grid_size = params$gc_grid
+    )
 
-  # Calculate final depths
-  avg_tum_ndepth <- weighted.mean(x = gc_norm$tumor$depth, w = colSums(gc_norm$tumor$n))
-  avg_nor_ndepth <- weighted.mean(x = gc_norm$normal$depth, w = colSums(gc_norm$normal$n))
+    # Calculate final depths
+    avg_tum_ndepth <- weighted.mean(x = gc_norm$tumor$depth, w = colSums(gc_norm$tumor$n))
+    avg_nor_ndepth <- weighted.mean(x = gc_norm$normal$depth, w = colSums(gc_norm$normal$n))
 
-  avg_depth_ratio <- if (params$ignore.normal) {
-    avg_tum_ndepth / gc_data$tum_depth
-  } else {
-    (avg_tum_ndepth / gc_data$tum_depth) / (avg_nor_ndepth / gc_data$nor_depth)
-  }
+    avg_depth_ratio <- if (params$ignore.normal) {
+        avg_tum_ndepth / gc_data$tum_depth
+    } else {
+        (avg_tum_ndepth / gc_data$tum_depth) / (avg_nor_ndepth / gc_data$nor_depth)
+    }
 
-  depths <- list(
-    avg_depth_ratio = avg_depth_ratio, avg_tum_depth = gc_data$tum_depth,
-    avg_nor_depth = gc_data$nor_depth
-  )
+    depths <- list(
+        avg_depth_ratio = avg_depth_ratio,
+        avg_tum_depth = gc_data$tum_depth,
+        avg_nor_depth = gc_data$nor_depth
+    )
 
-  # Construct return value
-  list(
-    BAF = containers$windows.baf, ratio = containers$windows.ratio, raw_ratio = containers$windows.raw_ratio,
-    depths = list(
-      raw = list(normal = containers$windows.normal, tumor = containers$windows.tumor),
-      norm = list(normal = containers$windows.n_normal, tumor = containers$windows.n_tumor)
-    ),
-    mutations = containers$mutation.list, segments = containers$segments.list,
-    win_peaks = containers$rank_peaks.list, chromosomes = params$chromosome.list,
-    gc = gc_stats, gc_norm = gc_norm, avg.depth.ratio = depths$avg_depth_ratio,
-    avg.depth.tumor = depths$avg_tum_depth, avg.depth.normal = depths$avg_nor_depth
-  )
+    # Calculate mutation statistics
+    total_mutations <- sum(sapply(containers$mutation.list, nrow))
+    total_bases <- sum(sapply(containers$segments.list, function(segs) {
+        sum(segs$end.pos - segs$start.pos + 1)
+    }))
+
+    # Calculate per-chromosome mutation statistics
+    chr_mutation_stats <- lapply(params$chromosome.list, function(chr) {
+        mutations <- nrow(containers$mutation.list[[chr]])
+        bases <- sum(containers$segments.list[[chr]]$end.pos - 
+                    containers$segments.list[[chr]]$start.pos + 1)
+        list(
+            mutations = mutations,
+            megabases = bases / 1e6,
+            mutations_per_mb = mutations / (bases / 1e6)
+        )
+    })
+    names(chr_mutation_stats) <- params$chromosome.list
+
+    # Compile complete mutation statistics
+    mutation_stats <- list(
+        total_mutations = total_mutations,
+        total_megabases = total_bases / 1e6,
+        mutations_per_mb = total_mutations / (total_bases / 1e6),
+        chromosomes = chr_mutation_stats
+    )
+
+    # Construct and return complete results
+    list(
+        BAF = containers$windows.baf,
+        ratio = containers$windows.ratio,
+        raw_ratio = containers$windows.raw_ratio,
+        depths = list(
+            raw = list(
+                normal = containers$windows.normal,
+                tumor = containers$windows.tumor
+            ),
+            norm = list(
+                normal = containers$windows.n_normal,
+                tumor = containers$windows.n_tumor
+            )
+        ),
+        mutations = containers$mutation.list,
+        segments = containers$segments.list,
+        win_peaks = containers$rank_peaks.list,
+        chromosomes = params$chromosome.list,
+        gc = gc_stats,
+        gc_norm = gc_norm,
+        avg.depth.ratio = depths$avg_depth_ratio,
+        avg.depth.tumor = depths$avg_tum_depth,
+        avg.depth.normal = depths$avg_nor_depth,
+        mutation_stats = mutation_stats
+    )
 }
 
 # Add error handling wrapper
