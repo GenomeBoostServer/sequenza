@@ -1,15 +1,93 @@
+#------------------------------------------------------------------------------#
+# Main model fitting functions
+#------------------------------------------------------------------------------#
+
+#' Fit BAF model to determine cellularity and ploidy
+#' @param cellularity Vector of cellularity values to test
+#' @param ploidy Vector of ploidy values to test
+#' @param mc.cores Number of cores for parallel processing
+baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
+                          ploidy = seq(1, 7, by = 0.1),
+                          mc.cores = getOption("mc.cores", 2L), ...) {
+  # Create parameter grid
+  result <- expand.grid(
+    ploidy = ploidy, cellularity = cellularity,
+    KEEP.OUT.ATTRS = FALSE
+  )
+
+  # Define fitting function for each parameter combination
+  fit.cp <- function(ii) {
+    L.model <- baf.bayes(
+      cellularity = result$cellularity[ii],
+      ploidy = result$ploidy[ii],
+      ...
+    )
+    sum(L.model[, 4])
+  }
+
+  # Run parallel processing with progress bar
+  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
+  result$LPP <- unlist(bayes.res)
+
+  # Calculate normalized likelihood surface
+  z <- tapply(result$LPP, list(result$ploidy, result$cellularity), mean)
+  x <- as.numeric(rownames(z))
+  y <- as.numeric(colnames(z))
+  max.lik <- max(result$LPP, na.rm = TRUE)
+  LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
+  znorm <- exp(z - LogSumLik)
+
+  list(ploidy = x, cellularity = y, lpp = znorm)
+}
+
+#' Mutation frequency model fitting
+#' @inheritParams baf.model.fit
+mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
+                             ploidy = seq(1, 7, by = 0.1),
+                             mc.cores = getOption("mc.cores", 2L), ...) {
+  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
+  fit.cp <- function(ii) {
+    L.model <- mufreq.bayes(
+      cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
+      ...
+    )
+    sum(L.model[, 4])
+  }
+  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
+  result$LPP <- unlist(bayes.res)
+  z <- tapply(result$LPP, list(result$ploidy, result$cellularity), mean)
+  x <- as.numeric(rownames(z))
+  y <- as.numeric(colnames(z))
+  max.lik <- max(result$LPP, na.rm = TRUE)
+  LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
+  znorm <- exp(z - LogSumLik)
+  list(ploidy = x, cellularity = y, lpp = znorm)
+}
+
+#------------------------------------------------------------------------------#
+# Probability distribution functions
+#------------------------------------------------------------------------------#
+
+# Mutation frequency distributions
 mufreq.dbinom <- function(mufreq, mufreq.model, depth.t, seq.errors = 0.01, ...) {
+  # Adjust zero mutation frequencies to sequence error rate
   mufreq.model[mufreq.model == 0] <- seq.errors
+
+  # Calculate number of successful events
   n.success <- round(mufreq * depth.t, 0)
+
   dbinom(x = n.success, size = depth.t, prob = mufreq.model, ...)
 }
 
 mufreq.dpois <- function(mufreq, mufreq.model, depth.t, seq.errors = 0.01, ...) {
+  # Handle zero frequencies
   mufreq.model[mufreq.model == 0] <- seq.errors
   n.success <- round(mufreq * depth.t, 0)
+
   dpois(x = n.success, lambda = mufreq.model * depth.t, ...)
 }
 
+# B-allele frequency distributions
 baf.dbinom <- function(baf, baf.model, depth.t, ...) {
   n.success <- round(baf * depth.t, 0)
   dbinom(x = n.success, size = depth.t, prob = baf.model, ...)
@@ -20,9 +98,12 @@ baf.dpois <- function(baf, baf.model, depth.t, ...) {
   dpois(x = n.success, lambda = baf.model * depth.t, ...)
 }
 
+# Depth ratio distributions
 depth.ratio.dbinom <- function(size, depth.ratio, depth.ratio.model, ...) {
+  # Convert ratio to probability space
   n.success <- round(size * (depth.ratio / (1 + depth.ratio)), 0)
   prob <- depth.ratio.model / (1 + depth.ratio.model)
+
   dbinom(x = n.success, size = size, prob = prob, ...)
 }
 
@@ -31,7 +112,25 @@ depth.ratio.dpois <- function(size, depth.ratio, depth.ratio.model, ...) {
   dpois(x = x, lambda = depth.ratio.model * size, ...)
 }
 
+#------------------------------------------------------------------------------#
+# Bayesian inference functions
+#------------------------------------------------------------------------------#
 
+#' Bayesian inference for B-allele frequencies
+#' @param Bf Vector of observed B-allele frequencies
+#' @param depth.ratio Vector of depth ratios
+#' @param cellularity Sample cellularity estimate
+#' @param ploidy Sample ploidy estimate
+#' @param avg.depth.ratio Average depth ratio
+#' @param sd.Bf Standard deviation for BAF
+#' @param sd.ratio Standard deviation for depth ratio
+#' @param weight.Bf BAF weights
+#' @param weight.ratio Depth ratio weights
+#' @param CNt.min Minimum copy number
+#' @param CNt.max Maximum copy number
+#' @param CNn Normal copy number (usually 2)
+#' @param priors.table Prior probabilities table
+#' @param ratio.priority Whether to prioritize depth ratio over BAF
 baf.bayes <- function(
   Bf, depth.ratio, cellularity, ploidy, avg.depth.ratio, sd.Bf = 0.1,
   sd.ratio = 0.5, weight.Bf = 1, weight.ratio = 1, CNt.min = 0, CNt.max = 7, CNn = 2,
@@ -100,29 +199,8 @@ baf.bayes <- function(
   bafs.L
 }
 
-baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01), ploidy = seq(1, 7,
-                            by = 0.1
-                          ), mc.cores = getOption("mc.cores", 2L), ...) {
-  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
-
-  fit.cp <- function(ii) {
-    L.model <- baf.bayes(
-      cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
-      ...
-    )
-    sum(L.model[, 4])
-  }
-  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
-  result$LPP <- unlist(bayes.res)
-  z <- tapply(result$LPP, list(result$ploidy, result$cellularity), mean)
-  x <- as.numeric(rownames(z))
-  y <- as.numeric(colnames(z))
-  max.lik <- max(result$LPP, na.rm = TRUE)
-  LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
-  znorm <- exp(z - LogSumLik)
-  list(ploidy = x, cellularity = y, lpp = znorm)
-}
-
+#' Bayesian inference for mutation frequencies
+#' @inheritParams baf.bayes
 mufreq.bayes <- function(
   mufreq, depth.ratio, cellularity, ploidy, avg.depth.ratio,
   weight.mufreq = 100, weight.ratio = 100, CNt.min = 1, CNt.max = 7, CNn = 2, priors.table = data.frame(
@@ -176,27 +254,4 @@ mufreq.bayes <- function(
   types.L <- do.call(rbind, types.L)
   colnames(types.L) <- c("CNn", "CNt", "Mt", "LPP")
   types.L
-}
-
-mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01), ploidy = seq(1,
-                               7,
-                               by = 0.1
-                             ), mc.cores = getOption("mc.cores", 2L), ...) {
-  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
-  fit.cp <- function(ii) {
-    L.model <- mufreq.bayes(
-      cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
-      ...
-    )
-    sum(L.model[, 4])
-  }
-  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
-  result$LPP <- unlist(bayes.res)
-  z <- tapply(result$LPP, list(result$ploidy, result$cellularity), mean)
-  x <- as.numeric(rownames(z))
-  y <- as.numeric(colnames(z))
-  max.lik <- max(result$LPP, na.rm = TRUE)
-  LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
-  znorm <- exp(z - LogSumLik)
-  list(ploidy = x, cellularity = y, lpp = znorm)
 }

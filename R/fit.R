@@ -236,3 +236,108 @@ filter_segments <- function(segs, segs_len, filters, female, XY) {
   filt.test <- segs.filt & !segs.is.xy
   list(data = segs[filt.test, ], mask = filt.test)
 }
+
+# Fix baf.model.fit to return correct structure
+baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
+                          ploidy = seq(1, 7, by = 0.1),
+                          mc.cores = getOption("mc.cores", 2L), ...) {
+  result <- expand.grid(
+    ploidy = ploidy, cellularity = cellularity,
+    KEEP.OUT.ATTRS = FALSE
+  )
+
+  # Use consistent cluster management
+  cl <- NULL
+  if (mc.cores > 1) {
+    cl <- manage_parallel_cluster(mc.cores)
+    on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE))
+  }
+
+  # Run parallel processing
+  bayes.res <- pbapply::pblapply(
+    X = 1:nrow(result),
+    FUN = function(ii) {
+      tryCatch(
+        {
+          L.model <- baf.bayes(
+            cellularity = result$cellularity[ii],
+            ploidy = result$ploidy[ii],
+            ...
+          )
+          sum(L.model[, 4])
+        },
+        error = function(e) {
+          message("Error in model fitting: ", e$message)
+          NA
+        }
+      )
+    },
+    cl = cl
+  )
+
+  # Convert results to vector
+  result$LPP <- unlist(bayes.res)
+
+  # Calculate normalized likelihood surface
+  z <- matrix(NA, nrow = length(ploidy), ncol = length(cellularity))
+  rownames(z) <- ploidy
+  colnames(z) <- cellularity
+
+  # Fill matrix with likelihood values
+  for (i in 1:nrow(result)) {
+    pi <- which(ploidy == result$ploidy[i])
+    ci <- which(cellularity == result$cellularity[i])
+    z[pi, ci] <- result$LPP[i]
+  }
+
+  # Normalize likelihood surface
+  max.lik <- max(result$LPP, na.rm = TRUE)
+  LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
+  znorm <- exp(z - LogSumLik)
+
+  # Return standard format
+  list(
+    ploidy = as.numeric(rownames(znorm)),
+    cellularity = as.numeric(colnames(znorm)),
+    lpp = znorm
+  )
+}
+
+# Similar update for mufreq.model.fit
+mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
+                             ploidy = seq(1, 7, by = 0.1),
+                             mc.cores = getOption("mc.cores", 2L), ...) {
+  result <- expand.grid(
+    ploidy = ploidy, cellularity = cellularity,
+    KEEP.OUT.ATTRS = FALSE
+  )
+
+  # Use consistent cluster management
+  cl <- NULL
+  if (mc.cores > 1) {
+    cl <- manage_parallel_cluster(mc.cores)
+    on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE))
+  }
+
+  # Run parallel processing with progress bar
+  bayes.res <- pbapply::pblapply(
+    X = 1:nrow(result),
+    FUN = function(ii) {
+      tryCatch(
+        {
+          L.model <- mufreq.bayes(
+            cellularity = result$cellularity[ii],
+            ploidy = result$ploidy[ii],
+            ...
+          )
+          sum(L.model[, 4])
+        },
+        error = function(e) {
+          message("Error in model fitting: ", e$message)
+          NA
+        }
+      )
+    },
+    cl = cl
+  )
+}

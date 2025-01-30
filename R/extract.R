@@ -43,39 +43,54 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
     # Initialize containers
     containers <- initialize_extract_containers(params$chromosome.list)
 
-    # Process each chromosome
+    # Process each chromosome with improved parallel handling
     if (params$parallel > 1) {
-      containers <- initialize_extract_containers(params$chromosome.list)
-      results <- pbapply::pblapply(
-        seq_along(params$chromosome.list),
-        function(idx) {
-          chr <- params$chromosome.list[idx]
-          local_containers <- initialize_extract_containers(params$chromosome.list)
-          process_single_chromosome(
-            chr, file, params$gc.stats,
-            gc_splines, local_containers, params
-          )
-        },
-        cl = params$parallel
-      )
+      cl <- NULL
+      tryCatch(
+        {
+          cl <- manage_parallel_cluster(params$parallel)
+          if (is.null(cl)) stop("Failed to create cluster")
+          on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE))
 
-      # Merge results back into main containers
-      for (idx in seq_along(results)) {
-        chr <- params$chromosome.list[idx]
-        containers <- store_chromosome_results(
-          list(
-            windows = list(
-              ratio = results[[idx]]$windows.ratio[[idx]],
-              raw_ratio = results[[idx]]$windows.raw_ratio[[idx]], normal = results[[idx]]$windows.normal[[idx]],
-              tumor = results[[idx]]$windows.tumor[[idx]], n_normal = results[[idx]]$windows.n_normal[[idx]],
-              n_tumor = results[[idx]]$windows.n_tumor[[idx]], baf = results[[idx]]$windows.baf[[idx]]
-            ),
-            segments = list(seg = results[[idx]]$segments.list[[idx]]), mutations = results[[idx]]$mutation.list[[idx]],
-            norm_gc_stats = results[[idx]]$norm.gc.list[[idx]]
-          ), containers,
-          chr, idx
-        )
-      }
+          # Export necessary objects
+          parallel::clusterExport(cl,
+            c("file", "params", "gc_splines"),
+            envir = environment()
+          )
+
+          results <- pbapply::pblapply(
+            seq_along(params$chromosome.list),
+            function(idx) {
+              chr <- params$chromosome.list[idx]
+              process_single_chromosome(
+                chr, file, params$gc.stats,
+                gc_splines, NULL, params
+              )
+            },
+            cl = cl
+          )
+
+          # Merge results back maintaining original data structure
+          for (idx in seq_along(results)) {
+            chr <- params$chromosome.list[idx]
+            containers$windows.baf[[idx]] <- results[[idx]]$windows.baf[[idx]]
+            containers$windows.ratio[[idx]] <- results[[idx]]$windows.ratio[[idx]]
+            containers$windows.raw_ratio[[idx]] <- results[[idx]]$windows.raw_ratio[[idx]]
+            containers$windows.normal[[idx]] <- results[[idx]]$windows.normal[[idx]]
+            containers$windows.tumor[[idx]] <- results[[idx]]$windows.tumor[[idx]]
+            containers$windows.n_normal[[idx]] <- results[[idx]]$windows.n_normal[[idx]]
+            containers$windows.n_tumor[[idx]] <- results[[idx]]$windows.n_tumor[[idx]]
+            containers$segments.list[[idx]] <- results[[idx]]$segments.list[[idx]]
+            containers$mutation.list[[idx]] <- results[[idx]]$mutation.list[[idx]]
+            containers$norm.gc.list[[idx]] <- results[[idx]]$norm.gc.list[[idx]]
+            containers$rank_peaks.list[[idx]] <- results[[idx]]$rank_peaks.list[[idx]]
+          }
+        },
+        error = function(e) {
+          message("Error in parallel processing: ", e$message)
+          stop(e)
+        }
+      )
     } else {
       for (chr in params$chromosome.list) {
         containers <- process_single_chromosome(
@@ -628,4 +643,27 @@ process_segments <- function(seqz.data, breaks, chr, windows, params) {
 
     list(segs = segs, selected_win = select_win, peak_win = compare_bins_segs)
   }
+}
+
+# Add safer parallel processing management function
+manage_parallel_cluster <- function(n_cores) {
+  if (n_cores > 1) {
+    cl <- NULL
+    tryCatch(
+      {
+        cl <- parallel::makeCluster(n_cores)
+        # Load required packages on worker nodes
+        parallel::clusterEvalQ(cl, {
+          library(pbapply)
+          library(stringr)
+        })
+        return(cl)
+      },
+      error = function(e) {
+        if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE)
+        stop("Failed to create cluster: ", e$message)
+      }
+    )
+  }
+  return(NULL)
 }
