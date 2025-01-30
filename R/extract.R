@@ -1,3 +1,108 @@
+#' @rdname sequenza
+#' @export
+sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
+                             peak_wins = seq(from = 50, to = 300, by = 25), normalization.method = "mean",
+                             ignore.normal = FALSE, verbose = TRUE, chromosome.list = NULL, breaks = NULL,
+                             min.mut.freq = 0.1, min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
+                             max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
+                             do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, parallel = 1,
+                             weighted.mean = TRUE, ...) {
+  # Initialize parameters with all arguments
+  params <- initialize_extract_parameters(
+    file = file, window = window, overlap = overlap,
+    slide_win = slide_win, peak_wins = peak_wins, normalization.method = normalization.method,
+    ignore.normal = ignore.normal, verbose = verbose, chromosome.list = chromosome.list,
+    breaks = breaks, assembly = assembly, gc.stats = gc.stats, do_raster = do_raster,
+    smooth_gc = smooth_gc, min_times_gc = min_times_gc, gc_grid = gc_grid, parallel = parallel,
+    weighted.mean = weighted.mean, ...
+  )
+
+  # Validate input parameters
+  validate_params(params)
+
+  # Initialize logging
+  log_file <- paste0(
+    tempdir(), "/sequenza_", format(Sys.time(), "%Y%m%d_%H%M%S"),
+    ".log"
+  )
+  log_conn <- file(log_file, "w")
+  on.exit(close(log_conn))
+
+  tryCatch({
+    # Process GC content
+    gc_data <- process_gc_content(params$gc.stats, params$normalization.method)
+
+    gc_splines <- list(normal = smooth.spline(data.frame(
+      gc = as.numeric(names(gc_data$normal_vect)),
+      depth = gc_data$normal_vect
+    )), tumor = smooth.spline(data.frame(
+      gc = as.numeric(names(gc_data$tumor_vect)),
+      depth = gc_data$tumor_vect
+    )))
+
+    # Initialize containers
+    containers <- initialize_extract_containers(params$chromosome.list)
+
+    # Process each chromosome
+    if (params$parallel > 1) {
+      containers <- initialize_extract_containers(params$chromosome.list)
+      results <- pbapply::pblapply(
+        seq_along(params$chromosome.list),
+        function(idx) {
+          chr <- params$chromosome.list[idx]
+          local_containers <- initialize_extract_containers(params$chromosome.list)
+          process_single_chromosome(
+            chr, file, params$gc.stats,
+            gc_splines, local_containers, params
+          )
+        },
+        cl = params$parallel
+      )
+
+      # Merge results back into main containers
+      for (idx in seq_along(results)) {
+        chr <- params$chromosome.list[idx]
+        containers <- store_chromosome_results(
+          list(
+            windows = list(
+              ratio = results[[idx]]$windows.ratio[[idx]],
+              raw_ratio = results[[idx]]$windows.raw_ratio[[idx]], normal = results[[idx]]$windows.normal[[idx]],
+              tumor = results[[idx]]$windows.tumor[[idx]], n_normal = results[[idx]]$windows.n_normal[[idx]],
+              n_tumor = results[[idx]]$windows.n_tumor[[idx]], baf = results[[idx]]$windows.baf[[idx]]
+            ),
+            segments = list(seg = results[[idx]]$segments.list[[idx]]), mutations = results[[idx]]$mutation.list[[idx]],
+            norm_gc_stats = results[[idx]]$norm.gc.list[[idx]]
+          ), containers,
+          chr, idx
+        )
+      }
+    } else {
+      for (chr in params$chromosome.list) {
+        containers <- process_single_chromosome(
+          chr, file, params$gc.stats,
+          gc_splines, containers, params
+        )
+      }
+    }
+
+    # Finalize and return results
+    final_results <- finalize_extract_results(
+      containers, params, params$gc.stats,
+      gc_data
+    )
+    gc() # Force garbage collection
+
+    return(final_results)
+  }, error = function(e) {
+    message("Error in sequenza.extract: ", e$message)
+    write(paste("Error:", e$message), log_conn)
+    stop(e)
+  }, finally = {
+    # Cleanup
+    gc()
+  })
+}
+
 # Helper function to validate input parameters
 validate_params <- function(params) {
   required <- c("window", "overlap", "normalization.method")
@@ -268,112 +373,6 @@ process_single_chromosome <- function(chr, file, gc_stats, gc_splines, container
   }
 
   containers
-}
-
-# Add proper documentation
-#' @rdname sequenza
-#' @export
-sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
-                             peak_wins = seq(from = 50, to = 300, by = 25), normalization.method = "mean",
-                             ignore.normal = FALSE, verbose = TRUE, chromosome.list = NULL, breaks = NULL,
-                             min.mut.freq = 0.1, min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
-                             max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
-                             do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, parallel = 1,
-                             weighted.mean = TRUE, ...) {
-  # Initialize parameters with all arguments
-  params <- initialize_extract_parameters(
-    file = file, window = window, overlap = overlap,
-    slide_win = slide_win, peak_wins = peak_wins, normalization.method = normalization.method,
-    ignore.normal = ignore.normal, verbose = verbose, chromosome.list = chromosome.list,
-    breaks = breaks, assembly = assembly, gc.stats = gc.stats, do_raster = do_raster,
-    smooth_gc = smooth_gc, min_times_gc = min_times_gc, gc_grid = gc_grid, parallel = parallel,
-    weighted.mean = weighted.mean, ...
-  )
-
-  # Validate input parameters
-  validate_params(params)
-
-  # Initialize logging
-  log_file <- paste0(
-    tempdir(), "/sequenza_", format(Sys.time(), "%Y%m%d_%H%M%S"),
-    ".log"
-  )
-  log_conn <- file(log_file, "w")
-  on.exit(close(log_conn))
-
-  tryCatch({
-    # Process GC content
-    gc_data <- process_gc_content(params$gc.stats, params$normalization.method)
-
-    gc_splines <- list(normal = smooth.spline(data.frame(
-      gc = as.numeric(names(gc_data$normal_vect)),
-      depth = gc_data$normal_vect
-    )), tumor = smooth.spline(data.frame(
-      gc = as.numeric(names(gc_data$tumor_vect)),
-      depth = gc_data$tumor_vect
-    )))
-
-    # Initialize containers
-    containers <- initialize_extract_containers(params$chromosome.list)
-
-    # Process each chromosome
-    if (params$parallel > 1) {
-      containers <- initialize_extract_containers(params$chromosome.list)
-      results <- pbapply::pblapply(
-        seq_along(params$chromosome.list),
-        function(idx) {
-          chr <- params$chromosome.list[idx]
-          local_containers <- initialize_extract_containers(params$chromosome.list)
-          process_single_chromosome(
-            chr, file, params$gc.stats,
-            gc_splines, local_containers, params
-          )
-        },
-        cl = params$parallel
-      )
-
-      # Merge results back into main containers
-      for (idx in seq_along(results)) {
-        chr <- params$chromosome.list[idx]
-        containers <- store_chromosome_results(
-          list(
-            windows = list(
-              ratio = results[[idx]]$windows.ratio[[idx]],
-              raw_ratio = results[[idx]]$windows.raw_ratio[[idx]], normal = results[[idx]]$windows.normal[[idx]],
-              tumor = results[[idx]]$windows.tumor[[idx]], n_normal = results[[idx]]$windows.n_normal[[idx]],
-              n_tumor = results[[idx]]$windows.n_tumor[[idx]], baf = results[[idx]]$windows.baf[[idx]]
-            ),
-            segments = list(seg = results[[idx]]$segments.list[[idx]]), mutations = results[[idx]]$mutation.list[[idx]],
-            norm_gc_stats = results[[idx]]$norm.gc.list[[idx]]
-          ), containers,
-          chr, idx
-        )
-      }
-    } else {
-      for (chr in params$chromosome.list) {
-        containers <- process_single_chromosome(
-          chr, file, params$gc.stats,
-          gc_splines, containers, params
-        )
-      }
-    }
-
-    # Finalize and return results
-    final_results <- finalize_extract_results(
-      containers, params, params$gc.stats,
-      gc_data
-    )
-    gc() # Force garbage collection
-
-    return(final_results)
-  }, error = function(e) {
-    message("Error in sequenza.extract: ", e$message)
-    write(paste("Error:", e$message), log_conn)
-    stop(e)
-  }, finally = {
-    # Cleanup
-    gc()
-  })
 }
 
 initialize_extract_parameters <- function(file, window, overlap = 1, slide_win = 100,

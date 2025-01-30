@@ -43,13 +43,13 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL, sample.id, out.d
     ratio.priority, chromosome.list, files
   )
 
-  # Generate plots
+  # Generate plots with progress tracking
   generate_result_plots(
     results, files,
     sequenza.extract,
     cellularity, ploidy,
     female, cp_results,
-    XY = XY # Pass XY parameter
+    XY = XY
   )
 
   # Write log file

@@ -1,31 +1,3 @@
-# Add input validation function
-validate_fit_input <- function(sequenza.extract, method, ploidy, cellularity) {
-  if (!is.list(sequenza.extract)) {
-    stop("sequenza.extract must be a list object")
-  }
-
-  if (!method %in% c("baf", "mufreq")) {
-    stop("method must be either 'baf' or 'mufreq'")
-  }
-
-  if (any(ploidy < 0)) {
-    stop("ploidy values must be positive")
-  }
-
-  if (any(cellularity < 0 | cellularity > 1)) {
-    stop("cellularity values must be between 0 and 1")
-  }
-}
-
-# Add progress tracking for long operations
-track_fit_progress <- function(total, verbose = TRUE) {
-  if (!verbose) {
-    return(NULL)
-  }
-  pb <- txtProgressBar(min = 0, max = total, style = 3)
-  function(i) setTxtProgressBar(pb, i)
-}
-
 #' @rdname sequenza
 #' @export
 sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
@@ -49,6 +21,7 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
       stop("Error preparing data: ", e$message)
     }
   )
+
   avg.depth.ratio <- sequenza.extract$avg.depth.ratio
 
   # Process method with better error handling
@@ -68,7 +41,8 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
           ploidy = ploidy,
           ratio.priority = ratio.priority,
           priors.table = priors.table,
-          mc.cores = mc.cores
+          mc.cores = mc.cores,
+          verbose = verbose
         ),
         avg.depth.ratio = avg.depth.ratio
       )
@@ -106,6 +80,34 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
   )
 
   return(result)
+}
+
+# Add input validation function
+validate_fit_input <- function(sequenza.extract, method, ploidy, cellularity) {
+  if (!is.list(sequenza.extract)) {
+    stop("sequenza.extract must be a list object")
+  }
+
+  if (!method %in% c("baf", "mufreq")) {
+    stop("method must be either 'baf' or 'mufreq'")
+  }
+
+  if (any(ploidy < 0)) {
+    stop("ploidy values must be positive")
+  }
+
+  if (any(cellularity < 0 | cellularity > 1)) {
+    stop("cellularity values must be between 0 and 1")
+  }
+}
+
+# Add progress tracking for long operations
+track_fit_progress <- function(total, verbose = TRUE) {
+  if (!verbose) {
+    return(NULL)
+  }
+  pb <- txtProgressBar(min = 0, max = total, style = 3)
+  function(i) setTxtProgressBar(pb, i)
 }
 
 # Helper function to prepare input data
