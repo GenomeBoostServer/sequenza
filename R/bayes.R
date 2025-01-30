@@ -2,10 +2,7 @@
 # Main model fitting functions
 #------------------------------------------------------------------------------#
 
-#' Fit BAF model to determine cellularity and ploidy
-#' @param cellularity Vector of cellularity values to test
-#' @param ploidy Vector of ploidy values to test
-#' @param mc.cores Number of cores for parallel processing
+#' @rdname baf.model.fit
 baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
                           ploidy = seq(1, 7, by = 0.1),
                           mc.cores = getOption("mc.cores", 2L), ...) {
@@ -25,8 +22,15 @@ baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
     sum(L.model[, 4])
   }
 
+  # Use consistent cluster management
+  cl <- NULL
+  if (mc.cores > 1) {
+    cl <- manage_parallel_cluster(mc.cores)
+    on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE))
+  }
+
   # Run parallel processing with progress bar
-  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
+  bayes.res <- pbapply::pblapply(X = 1:nrow(result), FUN = fit.cp, cl = cl)
   result$LPP <- unlist(bayes.res)
 
   # Calculate normalized likelihood surface
@@ -40,20 +44,45 @@ baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
   list(ploidy = x, cellularity = y, lpp = znorm)
 }
 
-#' Mutation frequency model fitting
-#' @inheritParams baf.model.fit
+#' @rdname baf.model.fit
 mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
                              ploidy = seq(1, 7, by = 0.1),
                              mc.cores = getOption("mc.cores", 2L), ...) {
-  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
-  fit.cp <- function(ii) {
-    L.model <- mufreq.bayes(
-      cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
-      ...
-    )
-    sum(L.model[, 4])
+  result <- expand.grid(
+    ploidy = ploidy, cellularity = cellularity,
+    KEEP.OUT.ATTRS = FALSE
+  )
+
+  # Use consistent cluster management
+  cl <- NULL
+  if (mc.cores > 1) {
+    cl <- manage_parallel_cluster(mc.cores)
+    on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl), silent = TRUE))
   }
-  bayes.res <- pblapply(X = 1:nrow(result), FUN = fit.cp, cl = mc.cores)
+
+  # Run parallel processing with progress bar
+  bayes.res <- pbapply::pblapply(
+    X = 1:nrow(result),
+    FUN = function(ii) {
+      tryCatch(
+        {
+          L.model <- mufreq.bayes(
+            cellularity = result$cellularity[ii],
+            ploidy = result$ploidy[ii],
+            ...
+          )
+          sum(L.model[, 4])
+        },
+        error = function(e) {
+          message("Error in model fitting: ", e$message)
+          NA
+        }
+      )
+    },
+    cl = cl
+  )
+
+  # Process results same as baf.model.fit
   result$LPP <- unlist(bayes.res)
   z <- tapply(result$LPP, list(result$ploidy, result$cellularity), mean)
   x <- as.numeric(rownames(z))
@@ -61,6 +90,7 @@ mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
   max.lik <- max(result$LPP, na.rm = TRUE)
   LogSumLik <- log(sum(exp(result$LPP - max.lik))) + max.lik
   znorm <- exp(z - LogSumLik)
+
   list(ploidy = x, cellularity = y, lpp = znorm)
 }
 
@@ -116,21 +146,7 @@ depth.ratio.dpois <- function(size, depth.ratio, depth.ratio.model, ...) {
 # Bayesian inference functions
 #------------------------------------------------------------------------------#
 
-#' Bayesian inference for B-allele frequencies
-#' @param Bf Vector of observed B-allele frequencies
-#' @param depth.ratio Vector of depth ratios
-#' @param cellularity Sample cellularity estimate
-#' @param ploidy Sample ploidy estimate
-#' @param avg.depth.ratio Average depth ratio
-#' @param sd.Bf Standard deviation for BAF
-#' @param sd.ratio Standard deviation for depth ratio
-#' @param weight.Bf BAF weights
-#' @param weight.ratio Depth ratio weights
-#' @param CNt.min Minimum copy number
-#' @param CNt.max Maximum copy number
-#' @param CNn Normal copy number (usually 2)
-#' @param priors.table Prior probabilities table
-#' @param ratio.priority Whether to prioritize depth ratio over BAF
+#' @rdname bayes
 baf.bayes <- function(
   Bf, depth.ratio, cellularity, ploidy, avg.depth.ratio, sd.Bf = 0.1,
   sd.ratio = 0.5, weight.Bf = 1, weight.ratio = 1, CNt.min = 0, CNt.max = 7, CNn = 2,
@@ -199,8 +215,7 @@ baf.bayes <- function(
   bafs.L
 }
 
-#' Bayesian inference for mutation frequencies
-#' @inheritParams baf.bayes
+#' @rdname bayes
 mufreq.bayes <- function(
   mufreq, depth.ratio, cellularity, ploidy, avg.depth.ratio,
   weight.mufreq = 100, weight.ratio = 100, CNt.min = 1, CNt.max = 7, CNn = 2, priors.table = data.frame(

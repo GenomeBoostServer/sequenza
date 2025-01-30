@@ -214,10 +214,11 @@ process_cp_table <- function(cp.table, cellularity, ploidy, files, sample.id) {
     return(list(
       cellularity = cellularity,
       ploidy = ploidy,
-      cint = cint
+      cint = cint,
+      cp.table = cp.table
     ))
   }
-  list(cellularity = cellularity, ploidy = ploidy, cint = NULL)
+  list(cellularity = cellularity, ploidy = ploidy, cint = NULL, cp.table = NULL)
 }
 
 process_mutations_and_segments <- function(sequenza.extract, segments_data, cp_results, female, XY, CNt.max, ratio.priority, chromosome.list, files) {
