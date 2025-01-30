@@ -39,20 +39,20 @@ data_fast_stats <- function(
 ) {
   # Input validation and setup
   if (!file.exists(file)) stop("File not found: ", file)
-  
+
   # Initialize connection with guaranteed cleanup
   con <- gzfile(file, "rb")
   on.exit(close(con))
-  
+
   if (verbose) message(msg, appendLF = FALSE)
-  
+
   # Skip header efficiently
   suppressWarnings(readLines(con, n = 1))
-    
+
   parse_chunk <- function(x, col_types, sets = col_sets, f = f1, args_f = args_f1) {
     # Process chunk data as a single string first
     chunk_text <- paste(mstrsplit(x), collapse = "\n")
-    
+
     # Process chunk with optimized settings
     chunk_data <- read_tsv(
       file = chunk_text,
@@ -63,24 +63,26 @@ data_fast_stats <- function(
       progress = FALSE,
       show_col_types = FALSE
     )
-    
+
     # Extract unique chromosomes and counts efficiently
     u_chr <- unique(chunk_data[[1]])
     n_chr <- table(chunk_data[[1]])
-    
+
     # Process sets in parallel if possible
     if (parallel > 1) {
-      set_lists <- parallel::mclapply(sets, f, y = as.data.frame(chunk_data), args = args_f, 
-                                    mc.cores = min(parallel, length(sets)))
+      set_lists <- parallel::mclapply(sets, f,
+        y = as.data.frame(chunk_data), args = args_f,
+        mc.cores = min(parallel, length(sets))
+      )
     } else {
       set_lists <- lapply(sets, f, y = as.data.frame(chunk_data), args = args_f)
     }
-    
+
     if (verbose) message(".", appendLF = FALSE)
     c(list(unique = u_chr, lines = n_chr), set_lists)
   }
-  
-  
+
+
   # Process chunks with correct parameters
   results <- chunk.apply(
     input = con,
@@ -89,7 +91,7 @@ data_fast_stats <- function(
     CH.MAX.SIZE = buffer,
     CH.PARALLEL = parallel
   )
-  
+
   if (verbose) message(" done")
   unfold_data(x = results, f = f2, args_f = args_f2, stats = stats)
 }
@@ -221,55 +223,55 @@ find_flex_points <- function(dens_list, f_threshold = 0.2) {
 
 # Helper function for matrix operations
 prepare_matrix_indices <- function(x) {
-    list(
-        rows = 2:(nrow(x) - 1),
-        cols = 2:(ncol(x) - 1),
-        neighbors = rbind(c(0,-1), c(0,1), c(-1,0), c(1,0))
-    )
+  list(
+    rows = 2:(nrow(x) - 1),
+    cols = 2:(ncol(x) - 1),
+    neighbors = rbind(c(0, -1), c(0, 1), c(-1, 0), c(1, 0))
+  )
 }
 
 mat_avg_peak <- function(x, min_diff = 0) {
-    # Pre-allocate result matrix
-    res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
-    indices <- prepare_matrix_indices(x)
-    
-    # Vectorized operation for better performance
-    for (i in indices$cols) {
-        for (j in indices$rows) {
-            diffs <- sapply(1:4, function(k) {
-                x[j, i] - x[j + indices$neighbors[k,1], i + indices$neighbors[k,2]]
-            })
-            res_m[j, i] <- mean(diffs)
-        }
+  # Pre-allocate result matrix
+  res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
+  indices <- prepare_matrix_indices(x)
+
+  # Vectorized operation for better performance
+  for (i in indices$cols) {
+    for (j in indices$rows) {
+      diffs <- sapply(1:4, function(k) {
+        x[j, i] - x[j + indices$neighbors[k, 1], i + indices$neighbors[k, 2]]
+      })
+      res_m[j, i] <- mean(diffs)
     }
-    res_m
+  }
+  res_m
 }
 
 mat_local_max <- function(x, min_diff = 0) {
-    # Check cache first
-    cache_key <- digest::digest(list(x, min_diff))
-    if (exists(cache_key, envir = .cache)) {
-        return(get(cache_key, envir = .cache))
+  # Check cache first
+  cache_key <- digest::digest(list(x, min_diff))
+  if (exists(cache_key, envir = .cache)) {
+    return(get(cache_key, envir = .cache))
+  }
+
+  # Pre-allocate and prepare indices
+  res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
+  indices <- prepare_matrix_indices(x)
+
+  # Vectorized operations using matrix algebra
+  for (i in indices$cols) {
+    for (j in indices$rows) {
+      center <- x[j, i]
+      neighbors <- sapply(1:4, function(k) {
+        x[j + indices$neighbors[k, 1], i + indices$neighbors[k, 2]]
+      })
+      res_m[j, i] <- as.integer(all(center - neighbors >= min_diff))
     }
-    
-    # Pre-allocate and prepare indices
-    res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
-    indices <- prepare_matrix_indices(x)
-    
-    # Vectorized operations using matrix algebra
-    for (i in indices$cols) {
-        for (j in indices$rows) {
-            center <- x[j, i]
-            neighbors <- sapply(1:4, function(k) {
-                x[j + indices$neighbors[k,1], i + indices$neighbors[k,2]]
-            })
-            res_m[j, i] <- as.integer(all(center - neighbors >= min_diff))
-        }
-    }
-    
-    # Cache result
-    assign(cache_key, res_m, envir = .cache)
-    res_m
+  }
+
+  # Cache result
+  assign(cache_key, res_m, envir = .cache)
+  res_m
 }
 
 find_local_max <- function(dens_list, f_threshold = 0.2) {
@@ -285,30 +287,33 @@ find_local_max <- function(dens_list, f_threshold = 0.2) {
 }
 
 smooth_matrix <- function(x, y, z) {
-    # Early return for empty/zero matrices
-    if (all(z == 0)) {
-        return(matrix(0, nrow = length(x), ncol = length(y)))
+  # Early return for empty/zero matrices
+  if (all(z == 0)) {
+    return(matrix(0, nrow = length(x), ncol = length(y)))
+  }
+
+  # Process only non-zero elements
+  mask <- z > 0
+  if (sum(mask) == 0) {
+    return(matrix(0, nrow = length(x), ncol = length(y)))
+  }
+
+  # Efficient grid creation and weight normalization
+  xy <- expand.grid(x = x, y = y)[mask, ]
+  weights <- as.vector(z)[mask]
+  norm_weights <- weights / sum(weights) * length(weights)
+
+  # Optimize bandwidth calculation
+  H <- tryCatch(
+    {
+      H <- Hpi(xy)
+      H * (length(weights) / sum(weights))^(1 / 2)
+    },
+    error = function(e) {
+      # Fallback to simpler bandwidth if Hpi fails
+      diag(c(sd(xy[, 1]), sd(xy[, 2]))) * (length(weights) / sum(weights))^(1 / 5)
     }
-    
-    # Process only non-zero elements
-    mask <- z > 0
-    if (sum(mask) == 0) {
-        return(matrix(0, nrow = length(x), ncol = length(y)))
-    }
-    
-    # Efficient grid creation and weight normalization
-    xy <- expand.grid(x = x, y = y)[mask, ]
-    weights <- as.vector(z)[mask]
-    norm_weights <- weights / sum(weights) * length(weights)
-    
-    # Optimize bandwidth calculation
-    H <- tryCatch({
-        H <- Hpi(xy)
-        H * (length(weights) / sum(weights))^(1/2)
-    }, error = function(e) {
-        # Fallback to simpler bandwidth if Hpi fails
-        diag(c(sd(xy[,1]), sd(xy[,2]))) * (length(weights) / sum(weights))^(1/5)
-    })
-    
-    kde(x = xy, w = norm_weights, H = H)
+  )
+
+  kde(x = xy, w = norm_weights, H = H)
 }

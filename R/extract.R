@@ -109,23 +109,26 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
       end_time <- Sys.time()
       end_mem <- gc(reset = FALSE)
       end_mem_used <- sum(end_mem[, 2])
-      
+
       # Track memory usage of all processes
       if (params$parallel > 1) {
         # Get all child process IDs (on Unix-like systems)
-        child_pids <- tryCatch({
-          suppressWarnings(
-            system(sprintf("pgrep -P %d", Sys.getpid()), intern = TRUE)
-          )
-        }, error = function(e) character(0))
-        
-        total_mem <- end_mem_used  # Start with main process memory
-        
+        child_pids <- tryCatch(
+          {
+            suppressWarnings(
+              system(sprintf("pgrep -P %d", Sys.getpid()), intern = TRUE)
+            )
+          },
+          error = function(e) character(0)
+        )
+
+        total_mem <- end_mem_used # Start with main process memory
+
         if (length(child_pids) > 0) {
           # Use ps command to get memory usage for each child process
           mem_cmd <- sprintf("ps -o rss= %s", paste(child_pids, collapse = " "))
           child_mems <- try(as.numeric(system(mem_cmd, intern = TRUE)) / 1024, silent = TRUE)
-          
+
           if (!inherits(child_mems, "try-error")) {
             total_mem <- total_mem + sum(child_mems, na.rm = TRUE)
           }
@@ -140,29 +143,45 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
         sum(segs$end.pos - segs$start.pos + 1)
       }))
       total_mb <- total_bases / 1e6
-      
+
       message("\nPerformance Summary:")
-      message(sprintf("Total time: %.2f minutes", 
-                    as.numeric(difftime(end_time, start_time, units = "mins"))))
+      message(sprintf(
+        "Total time: %.2f minutes",
+        as.numeric(difftime(end_time, start_time, units = "mins"))
+      ))
       if (params$parallel > 1) {
-        message(sprintf("Peak memory usage (main process): %.2f GB", 
-                      max(0, (end_mem_used) / 1024)))
-        message(sprintf("Peak memory usage (all processes): %.2f GB", 
-                      max(0, total_mem / 1024)))
-        message(sprintf("Number of worker processes: %d", 
-                      length(child_pids)))
+        message(sprintf(
+          "Peak memory usage (main process): %.2f GB",
+          max(0, (end_mem_used) / 1024)
+        ))
+        message(sprintf(
+          "Peak memory usage (all processes): %.2f GB",
+          max(0, total_mem / 1024)
+        ))
+        message(sprintf(
+          "Number of worker processes: %d",
+          length(child_pids)
+        ))
       } else {
-        message(sprintf("Peak memory usage: %.2f GB", 
-                      max(0, total_mem / 1024)))
+        message(sprintf(
+          "Peak memory usage: %.2f GB",
+          max(0, total_mem / 1024)
+        ))
       }
-      message(sprintf("Number of chromosomes processed: %d", 
-                    length(params$chromosome.list)))
-      message(sprintf("Total segments identified: %d", 
-                    sum(sapply(final_results$segments, nrow))))
+      message(sprintf(
+        "Number of chromosomes processed: %d",
+        length(params$chromosome.list)
+      ))
+      message(sprintf(
+        "Total segments identified: %d",
+        sum(sapply(final_results$segments, nrow))
+      ))
       message(sprintf("Total mutations detected: %d", total_mutations))
       message(sprintf("Total megabases analyzed: %.1f", total_mb))
-      message(sprintf("Mutation rate: %.2f mutations/Mb", 
-                    total_mutations/total_mb))
+      message(sprintf(
+        "Mutation rate: %.2f mutations/Mb",
+        total_mutations / total_mb
+      ))
     }
 
     return(final_results)
@@ -495,88 +514,88 @@ initialize_extract_parameters <- function(file, window, overlap = 1, slide_win =
 }
 
 finalize_extract_results <- function(containers, params, gc_stats, gc_data) {
-    # Name lists
-    for (list_name in names(containers)) {
-        if (length(containers[[list_name]]) == length(params$chromosome.list)) {
-            names(containers[[list_name]]) <- params$chromosome.list
-        }
+  # Name lists
+  for (list_name in names(containers)) {
+    if (length(containers[[list_name]]) == length(params$chromosome.list)) {
+      names(containers[[list_name]]) <- params$chromosome.list
     }
+  }
 
-    # Process GC normalization
-    gc_norm <- unfold_gc(cbind(unique = 0, lines = 0, do.call(rbind, containers$norm.gc.list)),
-        stats = FALSE, smooth = params$smooth_gc, min_times = params$min_times_gc,
-        cl = params$parallel, grid_size = params$gc_grid
-    )
+  # Process GC normalization
+  gc_norm <- unfold_gc(cbind(unique = 0, lines = 0, do.call(rbind, containers$norm.gc.list)),
+    stats = FALSE, smooth = params$smooth_gc, min_times = params$min_times_gc,
+    cl = params$parallel, grid_size = params$gc_grid
+  )
 
-    # Calculate final depths
-    avg_tum_ndepth <- weighted.mean(x = gc_norm$tumor$depth, w = colSums(gc_norm$tumor$n))
-    avg_nor_ndepth <- weighted.mean(x = gc_norm$normal$depth, w = colSums(gc_norm$normal$n))
+  # Calculate final depths
+  avg_tum_ndepth <- weighted.mean(x = gc_norm$tumor$depth, w = colSums(gc_norm$tumor$n))
+  avg_nor_ndepth <- weighted.mean(x = gc_norm$normal$depth, w = colSums(gc_norm$normal$n))
 
-    avg_depth_ratio <- if (params$ignore.normal) {
-        avg_tum_ndepth / gc_data$tum_depth
-    } else {
-        (avg_tum_ndepth / gc_data$tum_depth) / (avg_nor_ndepth / gc_data$nor_depth)
-    }
+  avg_depth_ratio <- if (params$ignore.normal) {
+    avg_tum_ndepth / gc_data$tum_depth
+  } else {
+    (avg_tum_ndepth / gc_data$tum_depth) / (avg_nor_ndepth / gc_data$nor_depth)
+  }
 
-    depths <- list(
-        avg_depth_ratio = avg_depth_ratio,
-        avg_tum_depth = gc_data$tum_depth,
-        avg_nor_depth = gc_data$nor_depth
-    )
+  depths <- list(
+    avg_depth_ratio = avg_depth_ratio,
+    avg_tum_depth = gc_data$tum_depth,
+    avg_nor_depth = gc_data$nor_depth
+  )
 
-    # Calculate mutation statistics
-    total_mutations <- sum(sapply(containers$mutation.list, nrow))
-    total_bases <- sum(sapply(containers$segments.list, function(segs) {
-        sum(segs$end.pos - segs$start.pos + 1)
-    }))
+  # Calculate mutation statistics
+  total_mutations <- sum(sapply(containers$mutation.list, nrow))
+  total_bases <- sum(sapply(containers$segments.list, function(segs) {
+    sum(segs$end.pos - segs$start.pos + 1)
+  }))
 
-    # Calculate per-chromosome mutation statistics
-    chr_mutation_stats <- lapply(params$chromosome.list, function(chr) {
-        mutations <- nrow(containers$mutation.list[[chr]])
-        bases <- sum(containers$segments.list[[chr]]$end.pos - 
-                    containers$segments.list[[chr]]$start.pos + 1)
-        list(
-            mutations = mutations,
-            megabases = bases / 1e6,
-            mutations_per_mb = mutations / (bases / 1e6)
-        )
-    })
-    names(chr_mutation_stats) <- params$chromosome.list
-
-    # Compile complete mutation statistics
-    mutation_stats <- list(
-        total_mutations = total_mutations,
-        total_megabases = total_bases / 1e6,
-        mutations_per_mb = total_mutations / (total_bases / 1e6),
-        chromosomes = chr_mutation_stats
-    )
-
-    # Construct and return complete results
+  # Calculate per-chromosome mutation statistics
+  chr_mutation_stats <- lapply(params$chromosome.list, function(chr) {
+    mutations <- nrow(containers$mutation.list[[chr]])
+    bases <- sum(containers$segments.list[[chr]]$end.pos -
+      containers$segments.list[[chr]]$start.pos + 1)
     list(
-        BAF = containers$windows.baf,
-        ratio = containers$windows.ratio,
-        raw_ratio = containers$windows.raw_ratio,
-        depths = list(
-            raw = list(
-                normal = containers$windows.normal,
-                tumor = containers$windows.tumor
-            ),
-            norm = list(
-                normal = containers$windows.n_normal,
-                tumor = containers$windows.n_tumor
-            )
-        ),
-        mutations = containers$mutation.list,
-        segments = containers$segments.list,
-        win_peaks = containers$rank_peaks.list,
-        chromosomes = params$chromosome.list,
-        gc = gc_stats,
-        gc_norm = gc_norm,
-        avg.depth.ratio = depths$avg_depth_ratio,
-        avg.depth.tumor = depths$avg_tum_depth,
-        avg.depth.normal = depths$avg_nor_depth,
-        mutation_stats = mutation_stats
+      mutations = mutations,
+      megabases = bases / 1e6,
+      mutations_per_mb = mutations / (bases / 1e6)
     )
+  })
+  names(chr_mutation_stats) <- params$chromosome.list
+
+  # Compile complete mutation statistics
+  mutation_stats <- list(
+    total_mutations = total_mutations,
+    total_megabases = total_bases / 1e6,
+    mutations_per_mb = total_mutations / (total_bases / 1e6),
+    chromosomes = chr_mutation_stats
+  )
+
+  # Construct and return complete results
+  list(
+    BAF = containers$windows.baf,
+    ratio = containers$windows.ratio,
+    raw_ratio = containers$windows.raw_ratio,
+    depths = list(
+      raw = list(
+        normal = containers$windows.normal,
+        tumor = containers$windows.tumor
+      ),
+      norm = list(
+        normal = containers$windows.n_normal,
+        tumor = containers$windows.n_tumor
+      )
+    ),
+    mutations = containers$mutation.list,
+    segments = containers$segments.list,
+    win_peaks = containers$rank_peaks.list,
+    chromosomes = params$chromosome.list,
+    gc = gc_stats,
+    gc_norm = gc_norm,
+    avg.depth.ratio = depths$avg_depth_ratio,
+    avg.depth.tumor = depths$avg_tum_depth,
+    avg.depth.normal = depths$avg_nor_depth,
+    mutation_stats = mutation_stats
+  )
 }
 
 # Add error handling wrapper
