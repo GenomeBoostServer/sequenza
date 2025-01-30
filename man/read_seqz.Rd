@@ -1,10 +1,11 @@
 \name{read.seqz}
 \alias{read.seqz}
-\alias{read.acgt}
-\title{Read a seqz or acgt format file}
+\title{Read and Process Sequenza Files}
 
 \description{
-    Efficiently reads a seqz file into R.
+    Efficiently reads and processes sequenza (seqz) files, providing support for both 
+    chromosome-specific and coordinate-specific data extraction. The function implements 
+    optimized reading strategies for both standard and tabix-indexed files.
 }
 
 \usage{
@@ -13,19 +14,16 @@
         col_names = c("chromosome", "position", "base.ref", "depth.normal",
             "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
             "GC.percent", "good.reads", "AB.normal", "AB.tumor",
-            "tumor.strand"),...)
+            "tumor.strand"), ...)
 }
 
 \arguments{
-    \item{file}{file name}
-    \item{col_types}{a string describing the classes of each columns of the
-        input file (see \code{\link{read_tsv}}). The default value corresponds
-        to the columns of a seqz file.}
-    \item{chr_name}{if specified, only the selected chromosome will be
-        extracted instead of the entire file. For \code{tabix}-indexed files
-        this argument can also be used to extract coordinated-selected genomic
-        regions. E.g. \code{chr_name="5:1-1000000"} will select the first
-        megabase of chromosome 5.}
+    \item{file}{Path to the input seqz file (can be gzipped)}
+    \item{col_types}{Column type specification string for data parsing. Defaults to 
+        "ciciidddcddccc" matching standard seqz file structure}
+    \item{chr_name}{Optional chromosome selector. For standard files, extracts data 
+        for the specified chromosome. For tabix-indexed files, supports genomic 
+        coordinates (e.g., "chr5:1-1000000")}
     \item{n_lines}{vector of length 2 specifying the first and last line to
         read from the file. If specified, only the selected portion of the
         file will be used.}
@@ -39,12 +37,16 @@
 }
 
 \details{
-    \code{read.seqz} is a function that allows to efficiently access a
-    \code{seqz} file by chromosome or by line numbers. The function can also
-    access coordinate specific regions with \code{tabix}-indexed \code{seqz}
-    files.
-    The specific content of a \code{seqz} file is explained in the \code{value}
-    section.
+    This function provides efficient access to seqz files through:
+    \itemize{
+        \item Optimized chunk-based reading for memory efficiency
+        \item Parallel processing support for large files
+        \item Direct coordinate access for tabix-indexed files
+        \item Automatic format detection and handling
+    }
+    
+    The function automatically detects file type (standard or tabix-indexed) and 
+    applies the most efficient reading strategy.
 }
 
 \format{
@@ -91,20 +93,21 @@
 
 \examples{
    \dontrun{
+    data_file <- system.file("extdata", "example.seqz.txt.gz", package = "sequenza")
 
-    data_file <-  system.file("extdata", "example.seqz.txt.gz", package = "sequenza")
+    # Read chromosome 1 from a seqz file
+    seqz_data <- read.seqz(data_file, chr_name = "1")
 
-    ## read chromosome 1 from an seqz file.
-    seqz_data <- read.seqz(data_file, chr_name = 1)
+    # Read a specific region from a tabix-indexed file
+    seqz_data <- read.seqz(data_file, chr_name = "1:1000000-2000000")
 
-    ## Fast access to chromosome X using the file metrics
-    gc.stats <- gc.sample.stats(data_file)
-    chrX <- gc.stats$file.metrics[gc.stats$file.metrics$chr == "X", ]
-    seqz.data <- read.seqz(data_file, n_lines = c(chrX$start, chrX$end))
+    # Process large files with parallel processing
+    seqz_data <- read.seqz(data_file, parallel = 4)
 
-    ## Compare the running time of the two different methods.
-    system.time(seqz.data <- read.seqz(data_file, n_lines = c(chrX$start, chrX$end)))
-    system.time(seqz.data <- read.seqz(data_file, chr_name = "X"))
-
+    # Compare different reading methods
+    system.time(seqz_data <- read.seqz(data_file, chr_name = "X"))
+    system.time(seqz_data <- read.seqz(data_file, 
+               n_lines = c(gc.stats$file.metrics$start[1], 
+                         gc.stats$file.metrics$end[1])))
    }
 }
