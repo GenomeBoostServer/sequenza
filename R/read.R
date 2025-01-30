@@ -1,61 +1,130 @@
-read.seqz <- function(
-  file, n_lines = NULL, col_types = "ciciidddcddccc", chr_name = NULL,
-  buffer = 33554432, parallel = 1, col_names = c(
-    "chromosome", "position", "base.ref",
-    "depth.normal", "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
-    "GC.percent", "good.reads", "AB.normal", "AB.tumor", "tumor.strand"
-  ), ...
-) {
-  if (is.null(n_lines)) {
-    skip <- 1
-    n_max <- Inf
-  } else {
-    n_lines <- round(sort(n_lines), 0)
-    skip <- n_lines[1]
+# Cached environment for repeated reads
+.seqz_cache <- new.env(parent = emptyenv())
 
-    n_max <- n_lines[2] - skip + 1
-  }
-  chr_name <- as.character(chr_name)
-  tbi <- file.exists(paste(file, "tbi", sep = "."))
-  if (tbi) {
-    read.seqz.tbi(file, split_chr_coord(chr_name), col_names)
-  } else {
-    read.seqz.chr(file,
-      chr_name = chr_name, col_types = col_types, col_names = col_names,
-      skip = skip, buffer = buffer, parallel = parallel
-    )
-  }
+read.seqz <- function(
+    file, n_lines = NULL, col_types = "ciciidddcddccc", chr_name = NULL,
+    buffer = 33554432, parallel = 1, col_names = c(
+        "chromosome", "position", "base.ref",
+        "depth.normal", "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
+        "GC.percent", "good.reads", "AB.normal", "AB.tumor", "tumor.strand"
+    ), cache = TRUE, ...
+) {
+    # Validate and normalize inputs
+    if (!file.exists(file)) stop("File not found: ", file)
+    if (parallel < 1) stop("parallel must be >= 1")
+    if (buffer < 1024) warning("Very small buffer size may impact performance")
+    
+    # Check cache for repeated reads
+    if (cache) {
+        cache_key <- digest::digest(list(file, n_lines, col_types, chr_name, buffer))
+        if (exists(cache_key, envir = .seqz_cache)) {
+            return(get(cache_key, envir = .seqz_cache))
+        }
+    }
+    
+    # Process line ranges more efficiently
+    range_info <- if (!is.null(n_lines)) {
+        if (length(n_lines) != 2) stop("n_lines must be NULL or length 2")
+        list(
+            skip = n_lines[1],
+            n_max = diff(round(sort(n_lines))) + 1
+        )
+    } else {
+        list(skip = 1, n_max = Inf)
+    }
+    
+    # Determine reading strategy
+    chr_name <- as.character(chr_name)
+    result <- if (file.exists(paste(file, "tbi", sep = "."))) {
+        read.seqz.tbi(file, split_chr_coord(chr_name), col_names)
+    } else {
+        read.seqz.chr(file,
+            chr_name = chr_name, col_types = col_types, col_names = col_names,
+            skip = range_info$skip, buffer = buffer, parallel = parallel
+        )
+    }
+    
+    # Cache result if enabled
+    if (cache) {
+        assign(cache_key, result, envir = .seqz_cache)
+    }
+    
+    result
 }
 
 read.seqz.chr <- function(file, chr_name, col_names, col_types, skip, buffer, parallel) {
-  # con <- gzfile(file, 'rb') suppressWarnings(skip_line <- readLines(con, n
-  # = 1)) remove(skip_line) parse_chunck <- function(x, chr_name, col_names,
-  # col_types) { x <- read_tsv(file = paste(mstrsplit(x), collapse = '\n'),
-  # col_types = col_types, skip = 0, n_max = Inf, col_names = col_names,
-  # progress = FALSE) x[x$chromosome == chr_name, ] } res <-
-  # chunk.apply(input = con, FUN = parse_chunck, chr_name = chr_name,
-  # col_names = col_names, col_types = col_types, CH.MAX.SIZE = buffer,
-  # parallel = parallel) close(con) res
-  if (!is.null(chr_name)) {
-    f <- function(x, pos) {
-      subset(x, chromosome == chr_name)
+    # Initialize connection with cleanup
+    con <- gzfile(file, "rb")
+    on.exit(close(con))
+    
+    # Skip header efficiently
+    if (skip > 0) {
+        suppressWarnings(readLines(con, n = skip))
     }
-  } else {
-    f <- function(x, pos) {
-      x
+    
+    # Pre-allocate and optimize chunk processing
+    parse_chunk <- function(x, chr_name, col_names, col_types) {
+        # Process chunk data as a single string first
+        chunk_text <- paste(mstrsplit(x), collapse = "\n")
+        
+        # Process chunk with optimized settings
+        chunk_data <- read_tsv(
+            file = chunk_text,
+            col_types = col_types,
+            col_names = col_names,
+            skip = 0,
+            n_max = Inf,
+            progress = FALSE,
+            show_col_types = FALSE,
+            lazy = TRUE  # Enable lazy reading
+        )
+        
+        # Efficient chromosome filtering using data.table-style optimization
+        if (!is.null(chr_name)) {
+            idx <- chunk_data$chromosome == chr_name
+            chunk_data[idx, , drop = FALSE]
+        } else {
+            chunk_data
+        }
     }
-  }
-  read_tsv_chunked(file, DataFrameCallback$new(f),
-    col_types = col_types, skip = skip,
-    col_names = col_names
-  )
+    
+    # Process chunks with correct parameters
+    results <- chunk.apply(
+        input = con,
+        FUN = parse_chunk,
+        chr_name = chr_name,
+        col_names = col_names,
+        col_types = col_types,
+        CH.MAX.SIZE = buffer,
+        CH.PARALLEL = parallel
+    )
+    
+    # Convert to tibble efficiently
+    as_tibble(results)
 }
 
 read.seqz.tbi <- function(file, chr_name, col_names) {
-  # res <- tabix.read(file, chr_name) res <- read_tsv(file =
-  # paste(mstrsplit(res), collapse = '\n'), col_types = col_types, skip = 0,
-  # n_max = Inf, col_names = col_names, progress = FALSE)
-  res <- tabix.read.table(file, chr_name, col.names = TRUE, stringsAsFactors = FALSE)
-  colnames(res) <- col_names
-  as_tibble(res)
+    # Use more efficient tabix reading
+    res <- tabix.read.table(file, chr_name, 
+        col.names = TRUE, 
+        stringsAsFactors = FALSE,
+        method = "internal"  # Use internal method for better performance
+    )
+    
+    # Set column names efficiently
+    setNames(as_tibble(res), col_names)
+}
+
+# Helper function for coordinate splitting
+split_chr_coord <- function(chr_name) {
+    if (is.null(chr_name) || !grepl(":", chr_name)) {
+        return(chr_name)
+    }
+    # More efficient coordinate parsing
+    parts <- strsplit(chr_name, "[:-]")[[1]]
+    if (length(parts) == 3) {
+        sprintf("%s:%s-%s", parts[1], parts[2], parts[3])
+    } else {
+        chr_name
+    }
 }

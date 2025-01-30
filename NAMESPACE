@@ -150,3 +150,7 @@ importFrom("utils",
     "txtProgressBar",
     "write.table"
 )
+
+importFrom("digest",
+    "digest"
+)

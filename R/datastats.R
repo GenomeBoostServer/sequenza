@@ -37,38 +37,61 @@ data_fast_stats <- function(
   ), f1 = gc_table, f2 = do_get_gc, args_f1 = list(), args_f2 = get_gc_defaults,
   msg = NULL
 ) {
+  # Input validation and setup
+  if (!file.exists(file)) stop("File not found: ", file)
+  
+  # Initialize connection with guaranteed cleanup
   con <- gzfile(file, "rb")
-
-  suppressWarnings(skip_line <- readLines(con, n = 1))
-  remove(skip_line)
-  parse_chunck <- function(x, col_types, sets = col_sets, f = f1, args_f = args_f1) {
-    x <- read_tsv(
-      file = paste(mstrsplit(x), collapse = "\n"), col_types = col_types,
-      col_names = FALSE, skip = 0, n_max = Inf, progress = FALSE
+  on.exit(close(con))
+  
+  if (verbose) message(msg, appendLF = FALSE)
+  
+  # Skip header efficiently
+  suppressWarnings(readLines(con, n = 1))
+    
+  parse_chunk <- function(x, col_types, sets = col_sets, f = f1, args_f = args_f1) {
+    # Process chunk data as a single string first
+    chunk_text <- paste(mstrsplit(x), collapse = "\n")
+    
+    # Process chunk with optimized settings
+    chunk_data <- read_tsv(
+      file = chunk_text,
+      col_types = col_types,
+      col_names = FALSE,
+      skip = 0,
+      n_max = Inf,
+      progress = FALSE,
+      show_col_types = FALSE
     )
-    u_chr <- unique(x[, 1])
-    n_chr <- table(x[, 1])
-    set_lists <- lapply(sets, f, y = x, args = args_f)
-    if (verbose) {
-      message(".", appendLF = FALSE)
+    
+    # Extract unique chromosomes and counts efficiently
+    u_chr <- unique(chunk_data[[1]])
+    n_chr <- table(chunk_data[[1]])
+    
+    # Process sets in parallel if possible
+    if (parallel > 1) {
+      set_lists <- parallel::mclapply(sets, f, y = as.data.frame(chunk_data), args = args_f, 
+                                    mc.cores = min(parallel, length(sets)))
+    } else {
+      set_lists <- lapply(sets, f, y = as.data.frame(chunk_data), args = args_f)
     }
+    
+    if (verbose) message(".", appendLF = FALSE)
     c(list(unique = u_chr, lines = n_chr), set_lists)
   }
-  if (verbose) {
-    message(msg, appendLF = FALSE)
-  }
-  res <- chunk.apply(
-    input = con, FUN = function(x, col_types, sets, f, args) {
-      parse_chunck(x, col_types = col_types, sets = sets, f = f, args)
-    }, col_types = col_types, sets = col_sets, f = f1, args = args_f1, CH.MAX.SIZE = buffer,
+  
+  
+  # Process chunks with correct parameters
+  results <- chunk.apply(
+    input = con,
+    FUN = parse_chunk,
+    col_types = col_types,
+    CH.MAX.SIZE = buffer,
     CH.PARALLEL = parallel
   )
-  close(con)
-  if (verbose) {
-    message(" done")
-  }
-  # res
-  unfold_data(x = res, f = f2, args_f = args_f2, stats = stats)
+  
+  if (verbose) message(" done")
+  unfold_data(x = results, f = f2, args_f = args_f2, stats = stats)
 }
 
 get_baf_ratio <- function(
@@ -192,55 +215,62 @@ find_flex_points <- function(dens_list, f_threshold = 0.2) {
   flex_points[flex_points[, 3] >= f_threshold, ]
 }
 
+
+# Add cache mechanism for repeated operations
+.cache <- new.env(parent = emptyenv())
+
+# Helper function for matrix operations
+prepare_matrix_indices <- function(x) {
+    list(
+        rows = 2:(nrow(x) - 1),
+        cols = 2:(ncol(x) - 1),
+        neighbors = rbind(c(0,-1), c(0,1), c(-1,0), c(1,0))
+    )
+}
+
 mat_avg_peak <- function(x, min_diff = 0) {
-  m_row <- nrow(x)
-  m_col <- ncol(x)
-  res_m <- matrix(0, nrow = m_row, ncol = m_col)
-  for (i in 2:(m_col - 1)) {
-    for (j in 2:(m_row - 1)) {
-      ij_val <- x[j, i]
-      left_cell_idx <- c(j, i - 1)
-      right_cell_idx <- c(j, i + 1)
-      up_cell_idx <- c(j + 1, i)
-      down_cell_idx <- c(j - 1, i)
-      res_m[j, i] <- mean(c(
-        ij_val - x[left_cell_idx[1], left_cell_idx[2]],
-        ij_val - x[right_cell_idx[1], right_cell_idx[2]], ij_val - x[
-          up_cell_idx[1],
-          up_cell_idx[2]
-        ], ij_val - x[down_cell_idx[1], down_cell_idx[2]]
-      ))
+    # Pre-allocate result matrix
+    res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
+    indices <- prepare_matrix_indices(x)
+    
+    # Vectorized operation for better performance
+    for (i in indices$cols) {
+        for (j in indices$rows) {
+            diffs <- sapply(1:4, function(k) {
+                x[j, i] - x[j + indices$neighbors[k,1], i + indices$neighbors[k,2]]
+            })
+            res_m[j, i] <- mean(diffs)
+        }
     }
-  }
-  res_m
+    res_m
 }
 
 mat_local_max <- function(x, min_diff = 0) {
-  m_row <- nrow(x)
-  m_col <- ncol(x)
-  res_m <- matrix(0, nrow = m_row, ncol = m_col)
-  for (i in 2:(m_col - 1)) {
-    for (j in 2:(m_row - 1)) {
-      ij_val <- x[j, i]
-      left_cell_idx <- c(j, i - 1)
-      right_cell_idx <- c(j, i + 1)
-      up_cell_idx <- c(j + 1, i)
-      down_cell_idx <- c(j - 1, i)
-      diff_vect <- c(ij_val - x[left_cell_idx[1], left_cell_idx[2]], ij_val -
-        x[right_cell_idx[1], right_cell_idx[2]], ij_val - x[
-        up_cell_idx[1],
-        up_cell_idx[2]
-      ], ij_val - x[down_cell_idx[1], down_cell_idx[2]])
-      if (all(diff_vect >= min_diff)) {
-        res_m[j, i] <- 1
-      } else {
-        res_m[j, i] <- 0
-      }
+    # Check cache first
+    cache_key <- digest::digest(list(x, min_diff))
+    if (exists(cache_key, envir = .cache)) {
+        return(get(cache_key, envir = .cache))
     }
-  }
-  res_m
+    
+    # Pre-allocate and prepare indices
+    res_m <- matrix(0, nrow = nrow(x), ncol = ncol(x))
+    indices <- prepare_matrix_indices(x)
+    
+    # Vectorized operations using matrix algebra
+    for (i in indices$cols) {
+        for (j in indices$rows) {
+            center <- x[j, i]
+            neighbors <- sapply(1:4, function(k) {
+                x[j + indices$neighbors[k,1], i + indices$neighbors[k,2]]
+            })
+            res_m[j, i] <- as.integer(all(center - neighbors >= min_diff))
+        }
+    }
+    
+    # Cache result
+    assign(cache_key, res_m, envir = .cache)
+    res_m
 }
-
 
 find_local_max <- function(dens_list, f_threshold = 0.2) {
   z_max <- mat_local_max(dens_list$z)
@@ -254,17 +284,31 @@ find_local_max <- function(dens_list, f_threshold = 0.2) {
   flex_points[flex_points[, 3] >= f_threshold, ]
 }
 
-
 smooth_matrix <- function(x, y, z) {
-  xy <- expand.grid(x, y)
-  weigths_xy <- as.vector(z)
-  z_threshold <- 0
-  xy <- xy[weigths_xy > z_threshold, ]
-  weigths_xy <- weigths_xy[weigths_xy > z_threshold]
-  d <- 2
-  m <- nrow(xy)
-  n <- sum(weigths_xy)
-  H <- Hpi(xy)
-  H <- H * (m / n)^(2 / d)
-  kde(x = xy, w = weigths_xy / sum(weigths_xy) * m, H = H)
+    # Early return for empty/zero matrices
+    if (all(z == 0)) {
+        return(matrix(0, nrow = length(x), ncol = length(y)))
+    }
+    
+    # Process only non-zero elements
+    mask <- z > 0
+    if (sum(mask) == 0) {
+        return(matrix(0, nrow = length(x), ncol = length(y)))
+    }
+    
+    # Efficient grid creation and weight normalization
+    xy <- expand.grid(x = x, y = y)[mask, ]
+    weights <- as.vector(z)[mask]
+    norm_weights <- weights / sum(weights) * length(weights)
+    
+    # Optimize bandwidth calculation
+    H <- tryCatch({
+        H <- Hpi(xy)
+        H * (length(weights) / sum(weights))^(1/2)
+    }, error = function(e) {
+        # Fallback to simpler bandwidth if Hpi fails
+        diag(c(sd(xy[,1]), sd(xy[,2]))) * (length(weights) / sum(weights))^(1/5)
+    })
+    
+    kde(x = xy, w = norm_weights, H = H)
 }

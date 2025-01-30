@@ -7,6 +7,11 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
                              max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
                              do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, parallel = 1,
                              weighted.mean = TRUE, ...) {
+  # Track start time and memory
+  start_time <- Sys.time()
+  start_mem <- gc(reset = TRUE)
+  start_mem_used <- sum(start_mem[, 2])
+
   # Initialize parameters with all arguments
   params <- initialize_extract_parameters(
     file = file, window = window, overlap = overlap,
@@ -19,14 +24,6 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
 
   # Validate input parameters
   validate_params(params)
-
-  # Initialize logging
-  log_file <- paste0(
-    tempdir(), "/sequenza_", format(Sys.time(), "%Y%m%d_%H%M%S"),
-    ".log"
-  )
-  log_conn <- file(log_file, "w")
-  on.exit(close(log_conn))
 
   tryCatch({
     # Process GC content
@@ -107,10 +104,70 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
     )
     gc() # Force garbage collection
 
+    # Print performance summary if verbose
+    if (params$verbose) {
+      end_time <- Sys.time()
+      end_mem <- gc(reset = FALSE)
+      end_mem_used <- sum(end_mem[, 2])
+      
+      # Track memory usage of all processes
+      if (params$parallel > 1) {
+        # Get all child process IDs (on Unix-like systems)
+        child_pids <- tryCatch({
+          suppressWarnings(
+            system(sprintf("pgrep -P %d", Sys.getpid()), intern = TRUE)
+          )
+        }, error = function(e) character(0))
+        
+        total_mem <- end_mem_used  # Start with main process memory
+        
+        if (length(child_pids) > 0) {
+          # Use ps command to get memory usage for each child process
+          mem_cmd <- sprintf("ps -o rss= %s", paste(child_pids, collapse = " "))
+          child_mems <- try(as.numeric(system(mem_cmd, intern = TRUE)) / 1024, silent = TRUE)
+          
+          if (!inherits(child_mems, "try-error")) {
+            total_mem <- total_mem + sum(child_mems, na.rm = TRUE)
+          }
+        }
+      } else {
+        total_mem <- end_mem_used
+      }
+
+      # Calculate total mutations and covered bases
+      total_mutations <- sum(sapply(final_results$mutations, nrow))
+      total_bases <- sum(sapply(final_results$segments, function(segs) {
+        sum(segs$end.pos - segs$start.pos + 1)
+      }))
+      total_mb <- total_bases / 1e6
+      
+      message("\nPerformance Summary:")
+      message(sprintf("Total time: %.2f minutes", 
+                    as.numeric(difftime(end_time, start_time, units = "mins"))))
+      if (params$parallel > 1) {
+        message(sprintf("Peak memory usage (main process): %.2f GB", 
+                      max(0, (end_mem_used) / 1024)))
+        message(sprintf("Peak memory usage (all processes): %.2f GB", 
+                      max(0, total_mem / 1024)))
+        message(sprintf("Number of worker processes: %d", 
+                      length(child_pids)))
+      } else {
+        message(sprintf("Peak memory usage: %.2f GB", 
+                      max(0, total_mem / 1024)))
+      }
+      message(sprintf("Number of chromosomes processed: %d", 
+                    length(params$chromosome.list)))
+      message(sprintf("Total segments identified: %d", 
+                    sum(sapply(final_results$segments, nrow))))
+      message(sprintf("Total mutations detected: %d", total_mutations))
+      message(sprintf("Total megabases analyzed: %.1f", total_mb))
+      message(sprintf("Mutation rate: %.2f mutations/Mb", 
+                    total_mutations/total_mb))
+    }
+
     return(final_results)
   }, error = function(e) {
     message("Error in sequenza.extract: ", e$message)
-    write(paste("Error:", e$message), log_conn)
     stop(e)
   }, finally = {
     # Cleanup
