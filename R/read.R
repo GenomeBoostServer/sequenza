@@ -104,11 +104,27 @@ read.seqz.chr <- function(file, chr_name, col_names, col_types, skip, buffer, pa
 }
 
 read.seqz.tbi <- function(file, chr_name, col_names) {
-    # Use more efficient tabix reading
-    res <- tabix.read.table(file, chr_name, 
+    # Handle different coordinate formats correctly
+    tabix_range <- if (!is.null(chr_name)) {
+        if (grepl(":", chr_name)) {
+            # Parse coordinates in format "chr:start-end"
+            parts <- strsplit(chr_name, "[:-]")[[1]]
+            if (length(parts) != 3) {
+                stop("Invalid coordinate format. Expected 'chr:start-end', got: ", chr_name)
+            }
+            chr_name  # Keep original format if it includes coordinates
+        } else {
+            # For chromosome-only queries, add full range specification
+            sprintf("%s:0-", chr_name)
+        }
+    } else {
+        NULL
+    }
+    
+    # Read tabix data efficiently
+    res <- tabix.read.table(file, tabix_range, 
         col.names = TRUE, 
-        stringsAsFactors = FALSE,
-        method = "internal"  # Use internal method for better performance
+        stringsAsFactors = FALSE
     )
     
     # Set column names efficiently
@@ -120,11 +136,14 @@ split_chr_coord <- function(chr_name) {
     if (is.null(chr_name) || !grepl(":", chr_name)) {
         return(chr_name)
     }
-    # More efficient coordinate parsing
     parts <- strsplit(chr_name, "[:-]")[[1]]
     if (length(parts) == 3) {
-        sprintf("%s:%s-%s", parts[1], parts[2], parts[3])
+        # Validate numeric parts
+        if (!all(grepl("^[0-9]+$", parts[2:3]))) {
+            stop("Invalid coordinate format. Start and end positions must be numeric.")
+        }
+        return(chr_name)  # Return original format if valid
     } else {
-        chr_name
+        stop("Invalid coordinate format. Expected 'chr:start-end', got: ", chr_name)
     }
 }
