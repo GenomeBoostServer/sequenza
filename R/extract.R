@@ -1,7 +1,7 @@
 #' @rdname sequenza
 #' @export
 sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
-                             peak_wins = seq(from = 50, to = 300, by = 25), normalization.method = "mean",
+                             peak_wins = seq(from = 50, to = 1000, by = 75), normalization.method = "mean",
                              ignore.normal = FALSE, verbose = TRUE, chromosome.list = NULL, breaks = NULL,
                              min.mut.freq = 0.1, min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
                              max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
