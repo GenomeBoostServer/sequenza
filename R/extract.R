@@ -1,12 +1,19 @@
 #' @rdname sequenza
 #' @export
+#' @import segments
 sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
                              peak_wins = seq(from = 50, to = 1000, by = 75), normalization.method = "mean",
                              ignore.normal = FALSE, verbose = TRUE, chromosome.list = NULL, breaks = NULL,
                              min.mut.freq = 0.1, min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
                              max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
                              do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, parallel = 1,
-                             weighted.mean = TRUE, ...) {
+                             weighted.mean = TRUE, segment_weights = list(
+                               fit = 0.8, # Weight for actual fit quality
+                               penalty = 0.4, # Weight for consecutive outliers penalty
+                               elbow = 0.1, # Weight for proximity to elbow
+                               segments = 0.1, # Weight for segment count before elbow
+                               window = 0.05 # Window size penalty weight
+                             ), ...) {
   # Track start time and memory
   start_time <- Sys.time()
   start_mem <- gc(reset = TRUE)
@@ -19,7 +26,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
     ignore.normal = ignore.normal, verbose = verbose, chromosome.list = chromosome.list,
     breaks = breaks, assembly = assembly, gc.stats = gc.stats, do_raster = do_raster,
     smooth_gc = smooth_gc, min_times_gc = min_times_gc, gc_grid = gc_grid, parallel = parallel,
-    weighted.mean = weighted.mean, ...
+    weighted.mean = weighted.mean, segment_weights = segment_weights, ...
   )
 
   # Validate input parameters
@@ -194,7 +201,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1, slide_win = 100,
   })
 }
 
-# Helper function to validate input parameters
+# Extraction helper functions
 validate_params <- function(params) {
   required <- c("window", "overlap", "normalization.method")
   missing <- required[!required %in% names(params)]
@@ -381,7 +388,7 @@ log_chromosome_results <- function(segments, seqz.data, mutations, num_het_posit
 process_single_chromosome <- function(chr, file, gc_stats, gc_splines, containers,
                                       params) {
   if (params$verbose) {
-    message("Processing chromosome ", chr)
+    message("\nProcessing chromosome ", chr)
   }
 
   # Read chromosome data
@@ -467,12 +474,18 @@ process_single_chromosome <- function(chr, file, gc_stats, gc_splines, container
 }
 
 initialize_extract_parameters <- function(file, window, overlap = 1, slide_win = 100,
-                                          peak_wins = seq(from = 50, to = 300, by = 25), normalization.method = "mean",
+                                          peak_wins = seq(from = 50, to = 1000, by = 75), normalization.method = "mean",
                                           ignore.normal = FALSE, verbose = TRUE, chromosome.list = NULL, breaks = NULL,
                                           min.mut.freq = 0.1, min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
                                           max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
                                           do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5, gc_grid = 250, parallel = 1,
-                                          weighted.mean = TRUE, ...) {
+                                          weighted.mean = TRUE, segment_weights = list(
+                                            fit = 0.8,
+                                            penalty = 0.4, # Weight for consecutive outliers penalty
+                                            elbow = 0.1,
+                                            segments = 0.1,
+                                            window = 0.05
+                                          ), ...) {
   # Initialize GC stats if needed
   local_gc_stats <- if (is.null(gc.stats)) {
     gc.sample.stats(file,
@@ -509,7 +522,7 @@ initialize_extract_parameters <- function(file, window, overlap = 1, slide_win =
     ), tumor = weighted.mean(
       local_gc_stats$tumor$depth,
       colSums(local_gc_stats$tumor$n)
-    )), weighted.mean = weighted.mean
+    )), weighted.mean = weighted.mean, segment_weights = segment_weights
   )
 }
 
@@ -596,257 +609,6 @@ finalize_extract_results <- function(containers, params, gc_stats, gc_data) {
     avg.depth.normal = depths$avg_nor_depth,
     mutation_stats = mutation_stats
   )
-}
-
-# Add error handling wrapper
-safely_compare_bins <- function(start.pos, end.pos, values, windows) {
-  tryCatch(
-    {
-      compare_bins(start.pos, end.pos, values, windows)
-    },
-    error = function(e) {
-      message("Warning: Bin comparison failed: ", e$message)
-      return(0) # Return neutral score on failure
-    }
-  )
-}
-
-# Improved rank_segments with better error handling and optimization
-rank_segments <- function(breaks_list, windows, params) {
-  if (length(breaks_list) <= 1) {
-    return(list(
-      segs = breaks_list[[1]], selected_win = params$peak_wins[1],
-      peak_win = data.frame(
-        peak_win = params$peak_wins[1], baf_fit = 0, ratio_fit = 0,
-        n_segs = nrow(breaks_list[[1]])
-      )
-    ))
-  }
-
-  # Validate windows input
-  if (!all(c("baf", "ratio") %in% names(windows))) {
-    stop("Windows must contain both 'baf' and 'ratio' components")
-  }
-
-  # Pre-extract window data for efficiency
-  baf_win <- windows$baf[[1]]
-  ratio_win <- windows$ratio[[1]]
-
-  # Calculate segment comparisons in parallel if possible
-  compare_bins_list <- if (params$parallel > 1) {
-    pbapply::pblapply(
-      breaks_list,
-      function(x) {
-        baf_vs_bins <- safely_compare_bins(x$start.pos, x$end.pos, x$Bf, baf_win)
-        ratio_vs_bins <- safely_compare_bins(
-          x$start.pos, x$end.pos, x$depth.ratio,
-          ratio_win
-        )
-        c(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
-      },
-      cl = params$parallel
-    )
-  } else {
-    lapply(breaks_list, function(x) {
-      baf_vs_bins <- safely_compare_bins(x$start.pos, x$end.pos, x$Bf, baf_win)
-      ratio_vs_bins <- safely_compare_bins(
-        x$start.pos, x$end.pos, x$depth.ratio,
-        ratio_win
-      )
-      c(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
-    })
-  }
-
-  # Create comparison dataframe
-  compare_bins_segs <- data.frame(
-    peak_win = params$peak_wins, do.call(rbind, compare_bins_list),
-    n_segs = vapply(breaks_list, nrow, numeric(1))
-  )
-
-  # Calculate metrics with focus on first significant drop
-  calculate_segment_scores <- function(compare_bins_segs) {
-    # Normalize metrics to 0-1 scale
-    normalize <- function(x) (x - min(x)) / (max(x) - min(x))
-
-    # Calculate normalized scores
-    baf_score <- normalize(compare_bins_segs$baf_fit)
-    ratio_score <- normalize(compare_bins_segs$ratio_fit)
-
-    # Calculate combined fit score
-    combined_fit <- (baf_score + ratio_score) / 2
-
-    # Find the elbow point using curvature
-    find_elbow <- function(y) {
-      x <- seq_along(y)
-      # Normalize x and y to 0-1 scale for consistent curvature calculation
-      x_norm <- (x - min(x)) / (diff(range(x)))
-      y_norm <- (y - min(y)) / (diff(range(y)))
-
-      # Calculate curvature using finite differences
-      dx <- c(diff(x_norm), tail(diff(x_norm), 1))
-      dy <- c(diff(y_norm), tail(diff(y_norm), 1))
-      dx2 <- c(diff(dx), tail(diff(dx), 1))
-      dy2 <- c(diff(dy), tail(diff(dy), 1))
-
-      # Curvature formula: |y''| / (1 + y'^2)^(3/2)
-      curvature <- abs(dy2) / (1 + dy^2)^(3 / 2)
-
-      # Identify the elbow as point of maximum curvature
-      # but only consider points where the fit is actually improving
-      valid_points <- dy < 0 # Only consider points where fit is improving
-      if (sum(valid_points) == 0) {
-        return(1)
-      }
-
-      curvature[!valid_points] <- 0
-      which.max(curvature)
-    }
-
-    # Find elbow point
-    elbow_idx <- find_elbow(combined_fit)
-
-    # Calculate distance score from elbow point
-    distance_from_elbow <- abs(seq_along(combined_fit) - elbow_idx)
-    elbow_score <- 1 - normalize(distance_from_elbow)
-
-    # Segment count bonus (small preference for more segments up to elbow point)
-    n_segs <- compare_bins_segs$n_segs
-    segment_bonus <- rep(0, length(n_segs))
-    segment_bonus[1:elbow_idx] <- normalize(n_segs[1:elbow_idx]) * 0.1
-
-    # Window size penalty (prefer smaller windows when fits are similar)
-    window_sizes <- compare_bins_segs$peak_win
-    window_penalty <- normalize(window_sizes) * 0.05
-
-    # Combine scores with emphasis on elbow point
-    weights <- c(
-      fit = 0.8, # Weight for actual fit quality
-      elbow = 0.1, # Strong weight for proximity to elbow
-      segments = 0.1 # Small weight for segment count before elbow
-    )
-
-    final_scores <- weights["fit"] * combined_fit +
-      weights["elbow"] * elbow_score +
-      weights["segments"] * segment_bonus -
-      window_penalty
-
-    if (params$verbose) {
-      message("\nElbow point analysis:")
-      message("Elbow detected at window size: ", compare_bins_segs$peak_win[elbow_idx])
-      message("Fit score at elbow: ", round(combined_fit[elbow_idx], 4))
-      message("Number of segments at elbow: ", n_segs[elbow_idx])
-    }
-
-    return(final_scores)
-  }
-
-  # Calculate comprehensive scores
-  scores <- calculate_segment_scores(compare_bins_segs)
-
-  # Select best window size based on maximum score
-  best_idx <- which.max(scores)
-  select_win <- compare_bins_segs$peak_win[best_idx]
-
-  # Add scores to output for debugging
-  compare_bins_segs$composite_score <- scores
-
-  if (params$verbose) {
-    message("Segment selection results:")
-    message("Selected window size: ", select_win)
-    message("Number of segments: ", compare_bins_segs$n_segs[best_idx])
-    message("Composite score: ", round(scores[best_idx], 4))
-
-    # Add more detailed diagnostics
-    message("\nTop 3 solutions:")
-    top3 <- head(order(scores, decreasing = TRUE), 3)
-    for (i in top3) {
-      message(sprintf(
-        "Window: %d, Segments: %d, Score: %.4f",
-        compare_bins_segs$peak_win[i],
-        compare_bins_segs$n_segs[i],
-        scores[i]
-      ))
-    }
-  }
-
-  list(
-    segs = breaks_list[[as.character(select_win)]],
-    selected_win = select_win,
-    peak_win = compare_bins_segs
-  )
-}
-
-# Update process_segments to use new rank_segments
-process_segments <- function(seqz.data, breaks, chr, windows, params) {
-  # Ensure weighted.mean has a default value if not in params
-  weighted.mean <- if (!is.null(params$weighted.mean)) {
-    params$weighted.mean
-  } else {
-    TRUE # Default value
-  }
-
-  # Handle segmentation
-  if (is.null(breaks)) {
-    diff_track <- slide_tracks(seqz.data, params$slide_win,
-      signal_out = "both",
-      verbose = params$verbose
-    )
-
-    breaks_chr_list <- lapply(params$peak_wins, function(x) {
-      breaks_chr <- extract_breaks_tracks(
-        track = diff_track, breaks = breaks,
-        peak_win = x, assembly = params$assembly, chromosome = chr
-      )
-
-      if (inherits(breaks_chr, "try-error") || is.null(breaks_chr) || nrow(breaks_chr) ==
-        0 || length(breaks_chr) == 0) {
-        breaks_chr <- data.frame(chrom = chr, start.pos = min(seqz.data$position,
-          na.rm = TRUE
-        ), end.pos = max(seqz.data$position, na.rm = TRUE))
-      }
-
-      tryCatch(
-        {
-          segment.breaks(
-            seqz.tab = seqz.data, breaks = breaks_chr, min.reads.baf = params$min.reads.baf,
-            weighted.mean = weighted.mean # Use local variable
-          )
-        },
-        error = function(e) {
-          message("Warning: Segment calculation failed: ", e$message)
-          data.frame(
-            chrom = chr, start.pos = min(seqz.data$position, na.rm = TRUE),
-            end.pos = max(seqz.data$position, na.rm = TRUE), Bf = 0, depth.ratio = mean(seqz.data$depth.ratio,
-              na.rm = TRUE
-            )
-          )
-        }
-      )
-    })
-
-    names(breaks_chr_list) <- as.character(params$peak_wins)
-    # Return segment rank and information
-    segment_results <- rank_segments(breaks_chr_list, windows, params)
-    return(list(
-      seg = segment_results$segs, breaks_list = breaks_chr_list, selected_win = segment_results$selected_win,
-      peak_win = segment_results$peak_win
-    ))
-  } else {
-    segs <- segment.breaks(
-      seqz.tab = seqz.data, breaks = breaks, min.reads.baf = params$min.reads.baf,
-      weighted.mean = params$weighted.mean
-    )
-    select_win <- 0
-    compare_bins_segs <- data.frame(peak_win = 0, baf_fit = compare_bins(
-      segs$start.pos,
-      segs$end.pos, segs$Bf, seqz.b.win[[chr]]
-    ), ratio_fit = compare_bins(
-      segs$start.pos,
-      segs$end.pos, segs$depth.ratio, seqz.r.win[[chr]]
-    ), n_segs = nrow(segs))
-
-    list(segs = segs, selected_win = select_win, peak_win = compare_bins_segs)
-  }
 }
 
 # Add safer parallel processing management function

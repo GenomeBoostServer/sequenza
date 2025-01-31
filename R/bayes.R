@@ -3,20 +3,16 @@
 #------------------------------------------------------------------------------#
 
 #' @rdname baf.model.fit
-baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
-                          ploidy = seq(1, 7, by = 0.1),
-                          mc.cores = getOption("mc.cores", 2L), ...) {
+baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01), ploidy = seq(1, 7,
+                            by = 0.1
+                          ), mc.cores = getOption("mc.cores", 2L), ...) {
   # Create parameter grid
-  result <- expand.grid(
-    ploidy = ploidy, cellularity = cellularity,
-    KEEP.OUT.ATTRS = FALSE
-  )
+  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
 
   # Define fitting function for each parameter combination
   fit.cp <- function(ii) {
     L.model <- baf.bayes(
-      cellularity = result$cellularity[ii],
-      ploidy = result$ploidy[ii],
+      cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
       ...
     )
     sum(L.model[, 4])
@@ -45,13 +41,11 @@ baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
 }
 
 #' @rdname baf.model.fit
-mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
-                             ploidy = seq(1, 7, by = 0.1),
-                             mc.cores = getOption("mc.cores", 2L), ...) {
-  result <- expand.grid(
-    ploidy = ploidy, cellularity = cellularity,
-    KEEP.OUT.ATTRS = FALSE
-  )
+mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01), ploidy = seq(1,
+                               7,
+                               by = 0.1
+                             ), mc.cores = getOption("mc.cores", 2L), ...) {
+  result <- expand.grid(ploidy = ploidy, cellularity = cellularity, KEEP.OUT.ATTRS = FALSE)
 
   # Use consistent cluster management
   cl <- NULL
@@ -61,26 +55,21 @@ mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
   }
 
   # Run parallel processing with progress bar
-  bayes.res <- pbapply::pblapply(
-    X = 1:nrow(result),
-    FUN = function(ii) {
-      tryCatch(
-        {
-          L.model <- mufreq.bayes(
-            cellularity = result$cellularity[ii],
-            ploidy = result$ploidy[ii],
-            ...
-          )
-          sum(L.model[, 4])
-        },
-        error = function(e) {
-          message("Error in model fitting: ", e$message)
-          NA
-        }
-      )
-    },
-    cl = cl
-  )
+  bayes.res <- pbapply::pblapply(X = 1:nrow(result), FUN = function(ii) {
+    tryCatch(
+      {
+        L.model <- mufreq.bayes(
+          cellularity = result$cellularity[ii], ploidy = result$ploidy[ii],
+          ...
+        )
+        sum(L.model[, 4])
+      },
+      error = function(e) {
+        message("Error in model fitting: ", e$message)
+        NA
+      }
+    )
+  }, cl = cl)
 
   # Process results same as baf.model.fit
   result$LPP <- unlist(bayes.res)

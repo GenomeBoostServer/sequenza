@@ -1,7 +1,5 @@
-plotWindows <- function(
-  seqz.window, m.lty = 1, m.lwd = 3, m.col = "black", q.bg = "lightblue",
-  log2.plot = FALSE, n.min = 1, xlim, ylim, add = FALSE, ...
-) {
+plotWindows <- function(seqz.window, m.lty = 1, m.lwd = 3, m.col = "black", q.bg = "lightblue",
+                        log2.plot = FALSE, n.min = 1, xlim, ylim, add = FALSE, ...) {
   if (log2.plot) {
     seqz.window[, c(3, 4, 5)] <- log2(seqz.window[, c(3, 4, 5)])
   }
@@ -48,10 +46,8 @@ gc.plot <- function(gc_list, range.gc = NULL, range.depth = NULL, ...) {
   colorgram(x = gc, y = depth, z = n, ...)
 }
 
-gc.summary.plot <- function(
-  gc_list, mean.col = 1, median.col = 2, scale.subset = 1.5,
-  ...
-) {
+gc.summary.plot <- function(gc_list, mean.col = 1, median.col = 2, scale.subset = 1.5,
+                            ...) {
   mengc <- mean_gc(gc_list)
   medgc <- median_gc(gc_list)
   max_depth <- round(max(c(mengc, medgc)) * scale.subset, 0)
@@ -64,10 +60,8 @@ gc.summary.plot <- function(
   )
 }
 
-cp.plot <- function(
-  cp.table, xlab = "Ploidy", ylab = "Cellularity", zlab = "Scaled rank LPP",
-  colFn = colorRampPalette(c("white", "lightblue")), ...
-) {
+cp.plot <- function(cp.table, xlab = "Ploidy", ylab = "Cellularity", zlab = "Scaled rank LPP",
+                    colFn = colorRampPalette(c("white", "lightblue")), ...) {
   z <- matrix(rank(cp.table$lpp), nrow = nrow(cp.table$lpp)) / length(cp.table$lpp)
   map <- makecmap(c(0, 1), colFn = colFn, include.lowest = TRUE)
   colorgram(
@@ -76,10 +70,8 @@ cp.plot <- function(
   )
 }
 
-cp.plot.contours <- function(
-  cp.table, likThresh = c(0.95), alternative = TRUE, col = palette(),
-  legend.pos = "bottomright", pch = 18, alt.pch = 3, ...
-) {
+cp.plot.contours <- function(cp.table, likThresh = c(0.95), alternative = TRUE, col = palette(),
+                             legend.pos = "bottomright", pch = 18, alt.pch = 3, ...) {
   znormsort <- sort(cp.table$lpp, decreasing = TRUE)
   znormcumLik <- cumsum(znormsort)
   n <- sapply(likThresh, function(x) sum(znormcumLik < x) + 1)
@@ -127,12 +119,10 @@ cp.plot.contours <- function(
   invisible(LikThresh)
 }
 
-chromosome.view <- function(
-  baf.windows, ratio.windows, mut.tab = NULL, segments = NULL,
-  min.N.baf = 1, min.N.ratio = 10000, main = "", vlines = FALSE, legend.inset = c(-20 *
-    strwidth("a", units = "figure"), 0), CNn = 2, cellularity = NULL, ploidy = NULL,
-  avg.depth.ratio = NULL, model.lwd = 1, model.lty = "24", model.col = 1, x.chr.space = 10
-) {
+chromosome.view <- function(baf.windows, ratio.windows, mut.tab = NULL, segments = NULL,
+                            min.N.baf = 1, min.N.ratio = 10000, main = "", vlines = FALSE, legend.inset = c(-20 *
+                              strwidth("a", units = "figure"), 0), CNn = 2, cellularity = NULL, ploidy = NULL,
+                            avg.depth.ratio = NULL, model.lwd = 1, model.lty = "24", model.col = 1, x.chr.space = 10) {
   if (is.null(segments)) {
     data.model <- NULL
   } else {
@@ -412,10 +402,8 @@ genome.view <- function(seg.cn, info.type = "AB", ...) {
   )
 }
 
-plotRawGenome <- function(
-  sequenza.extract, cellularity, ploidy, CNt.max = 7, main = "",
-  mirror.BAF = TRUE, ...
-) {
+plotRawGenome <- function(sequenza.extract, cellularity, ploidy, CNt.max = 7, main = "",
+                          mirror.BAF = TRUE, ...) {
   max.end <- sapply(sequenza.extract$ratio, FUN = function(x) {
     max(x$end, na.rm = TRUE)
   })
@@ -511,13 +499,11 @@ plotRawGenome <- function(
   axis(labels = chrs, at = coords.names, side = 1, cex.axis = 1)
 }
 
-baf.model.view <- function(
-  cellularity, ploidy, segs, BAF.space = seq(
-    0.001, 0.5,
-    0.005
-  ), ratio.space = seq(0.01, 2.5, 0.05), avg.depth.ratio = 1, CNt.max = 7,
-  segment.filter = 3e+06, col = "black"
-) {
+baf.model.view <- function(cellularity, ploidy, segs, BAF.space = seq(
+                             0.001, 0.5,
+                             0.005
+                           ), ratio.space = seq(0.01, 2.5, 0.05), avg.depth.ratio = 1, CNt.max = 7,
+                           segment.filter = 3e+06, col = "black") {
   s.b <- mean(segs$sd.BAF, na.rm = TRUE)
   s.r <- mean(segs$sd.ratio, na.rm = TRUE)
   l.s <- segs$end.pos - segs$start.pos
@@ -564,42 +550,183 @@ baf.model.view <- function(
   )
 }
 
-plot_peaks_win <- function(rank_wins_peak, ...) {
-  op <- par()
-  par(mfrow = c(1, 2))
-  select_color <- "green"
-  point_sizes <- setNames(
-    rep(as.numeric(par()["cex"]), times = nrow(rank_wins_peak$peak_win)),
-    as.character(rank_wins_peak$peak_win$peak_win)
-  )
-  win_colors <- setNames(rep("gray", times = nrow(rank_wins_peak$peak_win)), as.character(rank_wins_peak$peak_win$peak_win))
-  selected_index <- which(rank_wins_peak$peak_win$peak_win == rank_wins_peak$selected_win)
-  point_sizes[selected_index] <- 2 * point_sizes[selected_index]
-  win_colors[selected_index] <- select_color
-  range_fits <- range(c(rank_wins_peak$peak_win$baf_fit, rank_wins_peak$peak_win$ratio_fit),
-    na.rm = TRUE
-  )
+plot_peaks_win <- function(rank_wins_peak,
+                           colors = list(
+                             baf = "#3366CC", # Blue for BAF
+                             ratio = "#CC3366", # Red for ratio
+                             penalty = "#CC9933", # Gold for penalties
+                             elbow = "#33CC99", # Teal for elbow score
+                             segments = "#9933CC", # Purple for segment counts
+                             window = "#CC3333", # Dark red for window size penalty
+                             selected = "#33CC33" # Green for selected points
+                           ),
+                           show_details = TRUE,
+                           ...) {
+  # Set up multi-panel plot
+  op <- par(no.readonly = TRUE)
+  on.exit(par(op))
+
+  if (show_details) {
+    # 3x2 layout for detailed view
+    layout(matrix(c(1, 2, 3, 4, 5, 6), nrow = 3, byrow = TRUE))
+    par(mar = c(4, 4, 3, 1), oma = c(2, 2, 3, 6))
+  } else {
+    # 2x1 layout for basic view
+    par(mfrow = c(2, 1), mar = c(4, 4, 3, 1), oma = c(2, 2, 3, 6))
+  }
+
+  # Get data
+  peak_win <- rank_wins_peak$peak_win
+  selected_win <- rank_wins_peak$selected_win
+  x_vals <- peak_win$peak_win
+  selected_idx <- which(x_vals == selected_win)
+  point_sizes <- rep(1.5, nrow(peak_win))
+  point_sizes[selected_idx] <- 2.5
+
+  # 1. Plot fit scores (always shown)
   plot(
-    x = rank_wins_peak$peak_win$peak_win, y = rank_wins_peak$peak_win$baf_fit,
-    ylim = range_fits, type = "b", las = 2, pch = 21, bg = win_colors, col = "blue",
-    xlab = "Window size (data points) for break detection", ylab = "(%) quartiled data fitting with segmentation",
-    cex = point_sizes, ...
+    x = x_vals, y = peak_win$baf_fit,
+    type = "b", pch = 21, bg = "white", col = colors$baf,
+    xlab = "Window size", ylab = "Fit scores",
+    main = "Raw Fit Scores",
+    ylim = range(c(peak_win$baf_fit, peak_win$ratio_fit), na.rm = TRUE),
+    las = 1, cex = point_sizes
   )
   lines(
-    x = rank_wins_peak$peak_win$peak_win, y = rank_wins_peak$peak_win$ratio_fit,
-    type = "b", pch = 21, bg = win_colors, col = "red", cex = point_sizes
+    x = x_vals, y = peak_win$ratio_fit,
+    type = "b", pch = 21, bg = "white", col = colors$ratio,
+    cex = point_sizes
   )
-  legend("topright", c("baf fit", "depth ratio fit", "selected"), lty = c(
-    1, 1,
-    NA
-  ), pch = c(NA, NA, 21), col = c("blue", "red", "black"), pt.bg = c(
-    NA,
-    NA, select_color
-  ), pt.cex = c(NA, NA, point_sizes[selected_index]), bty = "n")
+  points(
+    x = selected_win,
+    y = peak_win$baf_fit[selected_idx],
+    pch = 21, bg = colors$selected, cex = 2.5
+  )
+  points(
+    x = selected_win,
+    y = peak_win$ratio_fit[selected_idx],
+    pch = 21, bg = colors$selected, cex = 2.5
+  )
+  legend("topright", c("BAF fit", "Ratio fit", "Selected"),
+    col = c(colors$baf, colors$ratio, "black"),
+    pt.bg = c("white", "white", colors$selected),
+    pch = 21, bty = "n"
+  )
 
-  barplot(setNames(rank_wins_peak$peak_win$n_segs, as.character(rank_wins_peak$peak_win$peak_win)),
-    las = 2, xlab = "Window size (data points) for break detection", ylab = "Nuber of segments",
-    col = win_colors
+  # 2. Plot penalties (always shown)
+  plot(
+    x = x_vals, y = peak_win$baf_penalty,
+    type = "b", pch = 21, bg = "white", col = colors$baf,
+    xlab = "Window size", ylab = "Penalty scores",
+    main = "Consecutive Outliers Penalties",
+    ylim = range(c(peak_win$baf_penalty, peak_win$ratio_penalty), na.rm = TRUE),
+    las = 1, cex = point_sizes
   )
-  legend("topright", c("selected window size"), fill = select_color, bty = "n")
+  lines(
+    x = x_vals, y = peak_win$ratio_penalty,
+    type = "b", pch = 21, bg = "white", col = colors$ratio,
+    cex = point_sizes
+  )
+  points(
+    x = selected_win,
+    y = peak_win$baf_penalty[selected_idx],
+    pch = 21, bg = colors$selected, cex = 2.5
+  )
+  points(
+    x = selected_win,
+    y = peak_win$ratio_penalty[selected_idx],
+    pch = 21, bg = colors$selected, cex = 2.5
+  )
+
+  if (show_details) {
+    # 3. Plot elbow score
+    elbow_scores <- normalize_scores(peak_win$composite_score)
+    plot(
+      x = x_vals, y = elbow_scores,
+      type = "b", pch = 21, bg = "white", col = colors$elbow,
+      xlab = "Window size", ylab = "Score",
+      main = "Elbow Point Detection",
+      las = 1, cex = point_sizes
+    )
+    points(
+      x = selected_win,
+      y = elbow_scores[selected_idx],
+      pch = 21, bg = colors$selected, cex = 2.5
+    )
+
+    # 4. Plot segment counts with penalty
+    seg_counts <- normalize_scores(peak_win$n_segs)
+    plot(
+      x = x_vals, y = seg_counts,
+      type = "b", pch = 21, bg = "white", col = colors$segments,
+      xlab = "Window size", ylab = "Normalized count",
+      main = "Segment Count Score",
+      las = 1, cex = point_sizes
+    )
+    points(
+      x = selected_win,
+      y = seg_counts[selected_idx],
+      pch = 21, bg = colors$selected, cex = 2.5
+    )
+
+    # 5. Plot window size penalty
+    window_penalty <- normalize_scores(x_vals)
+    plot(
+      x = x_vals, y = window_penalty,
+      type = "b", pch = 21, bg = "white", col = colors$window,
+      xlab = "Window size", ylab = "Penalty",
+      main = "Window Size Penalty",
+      las = 1, cex = point_sizes
+    )
+    points(
+      x = selected_win,
+      y = window_penalty[selected_idx],
+      pch = 21, bg = colors$selected, cex = 2.5
+    )
+
+    # 6. Plot final composite score
+    plot(
+      x = x_vals, y = peak_win$composite_score,
+      type = "b", pch = 21, bg = "white", col = colors$penalty,
+      xlab = "Window size", ylab = "Score",
+      main = "Final Composite Score",
+      las = 1, cex = point_sizes
+    )
+    points(
+      x = selected_win,
+      y = peak_win$composite_score[selected_idx],
+      pch = 21, bg = colors$selected, cex = 2.5
+    )
+  }
+
+  # Get chromosome name for title
+  chr_name <- if (!is.null(rank_wins_peak$chromosome)) {
+    paste0(" - Chr ", rank_wins_peak$chromosome)
+  } else {
+    ""
+  }
+
+  # Use title with chromosome
+  title_text <- sprintf("Segmentation Analysis%s\nSelected window: %d",
+    chr_name, selected_win)
+  title(main = title_text, outer = TRUE)
+
+  # Add weights text only if weights are available
+  if (show_details && !is.null(rank_wins_peak$weights)) {
+    weights <- rank_wins_peak$weights
+    weight_text <- sprintf(
+      "Weights: fit=%.2f, penalty=%.2f, elbow=%.2f, segments=%.2f, window=%.2f",
+      weights$fit, weights$penalty, weights$elbow,
+      weights$segments, weights$window
+    )
+    mtext(weight_text, side = 1, outer = TRUE, line = 0.5)
+  }
+}
+
+# Helper function to normalize scores to 0-1 range
+normalize_scores <- function(x) {
+  if (length(unique(x)) <= 1) {
+    return(rep(0, length(x)))
+  }
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
 }
