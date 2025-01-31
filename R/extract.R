@@ -663,29 +663,115 @@ rank_segments <- function(breaks_list, windows, params) {
     n_segs = vapply(breaks_list, nrow, numeric(1))
   )
 
-  # Calculate ranks with weights for different metrics
-  ranks_fits <- cbind(
-    baf = rank(-compare_bins_segs$baf_fit, ties.method = "max"),
-    ratio = rank(-compare_bins_segs$ratio_fit, ties.method = "max"), n_segs = rank(compare_bins_segs$n_segs,
-      ties.method = "min"
+  # Calculate metrics with focus on first significant drop
+  calculate_segment_scores <- function(compare_bins_segs) {
+    # Normalize metrics to 0-1 scale
+    normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+
+    # Calculate normalized scores
+    baf_score <- normalize(compare_bins_segs$baf_fit)
+    ratio_score <- normalize(compare_bins_segs$ratio_fit)
+
+    # Calculate combined fit score
+    combined_fit <- (baf_score + ratio_score) / 2
+
+    # Find the elbow point using curvature
+    find_elbow <- function(y) {
+      x <- seq_along(y)
+      # Normalize x and y to 0-1 scale for consistent curvature calculation
+      x_norm <- (x - min(x)) / (diff(range(x)))
+      y_norm <- (y - min(y)) / (diff(range(y)))
+
+      # Calculate curvature using finite differences
+      dx <- c(diff(x_norm), tail(diff(x_norm), 1))
+      dy <- c(diff(y_norm), tail(diff(y_norm), 1))
+      dx2 <- c(diff(dx), tail(diff(dx), 1))
+      dy2 <- c(diff(dy), tail(diff(dy), 1))
+
+      # Curvature formula: |y''| / (1 + y'^2)^(3/2)
+      curvature <- abs(dy2) / (1 + dy^2)^(3 / 2)
+
+      # Identify the elbow as point of maximum curvature
+      # but only consider points where the fit is actually improving
+      valid_points <- dy < 0 # Only consider points where fit is improving
+      if (sum(valid_points) == 0) {
+        return(1)
+      }
+
+      curvature[!valid_points] <- 0
+      which.max(curvature)
+    }
+
+    # Find elbow point
+    elbow_idx <- find_elbow(combined_fit)
+
+    # Calculate distance score from elbow point
+    distance_from_elbow <- abs(seq_along(combined_fit) - elbow_idx)
+    elbow_score <- 1 - normalize(distance_from_elbow)
+
+    # Segment count bonus (small preference for more segments up to elbow point)
+    n_segs <- compare_bins_segs$n_segs
+    segment_bonus <- rep(0, length(n_segs))
+    segment_bonus[1:elbow_idx] <- normalize(n_segs[1:elbow_idx]) * 0.1
+
+    # Window size penalty (prefer smaller windows when fits are similar)
+    window_sizes <- compare_bins_segs$peak_win
+    window_penalty <- normalize(window_sizes) * 0.05
+
+    # Combine scores with emphasis on elbow point
+    weights <- c(
+      fit = 0.8, # Weight for actual fit quality
+      elbow = 0.1, # Strong weight for proximity to elbow
+      segments = 0.1 # Small weight for segment count before elbow
     )
-  )
 
-  # Select best fit considering all metrics
-  total_ranks <- rowSums(ranks_fits)
-  best_fits <- which(total_ranks == min(total_ranks))
-  select_win <- max(compare_bins_segs$peak_win[best_fits])
+    final_scores <- weights["fit"] * combined_fit +
+      weights["elbow"] * elbow_score +
+      weights["segments"] * segment_bonus -
+      window_penalty
 
-  # Debug information if verbose
+    if (params$verbose) {
+      message("\nElbow point analysis:")
+      message("Elbow detected at window size: ", compare_bins_segs$peak_win[elbow_idx])
+      message("Fit score at elbow: ", round(combined_fit[elbow_idx], 4))
+      message("Number of segments at elbow: ", n_segs[elbow_idx])
+    }
+
+    return(final_scores)
+  }
+
+  # Calculate comprehensive scores
+  scores <- calculate_segment_scores(compare_bins_segs)
+
+  # Select best window size based on maximum score
+  best_idx <- which.max(scores)
+  select_win <- compare_bins_segs$peak_win[best_idx]
+
+  # Add scores to output for debugging
+  compare_bins_segs$composite_score <- scores
+
   if (params$verbose) {
-    message("Segment ranking results:")
+    message("Segment selection results:")
     message("Selected window size: ", select_win)
-    message("Number of segments: ", compare_bins_segs$n_segs[compare_bins_segs$peak_win ==
-      select_win])
+    message("Number of segments: ", compare_bins_segs$n_segs[best_idx])
+    message("Composite score: ", round(scores[best_idx], 4))
+
+    # Add more detailed diagnostics
+    message("\nTop 3 solutions:")
+    top3 <- head(order(scores, decreasing = TRUE), 3)
+    for (i in top3) {
+      message(sprintf(
+        "Window: %d, Segments: %d, Score: %.4f",
+        compare_bins_segs$peak_win[i],
+        compare_bins_segs$n_segs[i],
+        scores[i]
+      ))
+    }
   }
 
   list(
-    segs = breaks_list[[as.character(select_win)]], selected_win = select_win,
+    segs = breaks_list[[as.character(select_win)]],
+    selected_win = select_win,
     peak_win = compare_bins_segs
   )
 }
