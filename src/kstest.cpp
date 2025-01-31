@@ -104,64 +104,6 @@ void  coord_quart(NumericVector res, const IntegerVector& x, const NumericVector
     }
 }
 
-// Add this helper function for C++ smoothing
-inline NumericVector smooth_vector(const NumericVector& y, const IntegerVector& x, int window = 5) {
-    const int n = y.size();
-    NumericVector smoothed(n);
-    
-    // Ensure window size is odd
-    window = (window % 2 == 0) ? window + 1 : window;
-    const int half_window = window / 2;
-    
-    // Pre-allocate vectors for the sliding window
-    std::vector<double> window_sum(n);
-    std::vector<int> window_count(n);
-    
-    // Initial window calculation
-    double sum = 0.0;
-    int count = 0;
-    
-    // Calculate first window
-    for(int i = 0; i <= half_window && i < n; i++) {
-        if(!R_IsNA(y[i])) {
-            sum += y[i];
-            count++;
-        }
-    }
-    
-    // Sliding window implementation
-    #pragma omp parallel for schedule(static, 1000) reduction(+:sum,count)
-    for(int i = 0; i < n; i++) {
-        // Remove leftmost value if possible
-        if(i > half_window) {
-            if(!R_IsNA(y[i - half_window - 1])) {
-                sum -= y[i - half_window - 1];
-                count--;
-            }
-        }
-        
-        // Add rightmost value if possible
-        if(i + half_window < n) {
-            if(!R_IsNA(y[i + half_window])) {
-                sum += y[i + half_window];
-                count++;
-            }
-        }
-        
-        // Store results
-        window_sum[i] = sum;
-        window_count[i] = count;
-    }
-    
-    // Calculate final smoothed values
-    #pragma omp parallel for schedule(static, 1000)
-    for(int i = 0; i < n; i++) {
-        smoothed[i] = window_count[i] > 0 ? window_sum[i] / window_count[i] : NA_REAL;
-    }
-    
-    return smoothed;
-}
-
 // Modify the function signature to match exactly what's in RcppExports.cpp
 DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, bool smooth = true, int method = 1, bool verbose = true) {
     // Input validation
@@ -180,24 +122,32 @@ DataFrame slide_matrix(NumericVector x, IntegerVector position, int w = 100, boo
     IntegerVector steps = Rcpp::Range(w_half, N - w_half - 1);
     NumericVector ksres(result_size);
     
-    // Use parallel processing for larger datasets
-    #pragma omp parallel sections if(N > 10000)
-    {
-        #pragma omp section
-        {
-            coord_quart(ksres, steps, x, w_half, method, verbose);
-        }
-    }
-    
+    coord_quart(ksres, steps, x, w_half, method, verbose);
     IntegerVector pos_sub = position[steps];
 
     if (smooth) {
-        // Use our C++ smoothing implementation instead of R's smooth.spline
-        NumericVector smoothed_y = smooth_vector(ksres, pos_sub);
+        // Use R's smooth.spline with optimized parameters
+        Environment pkg = Environment::namespace_env("stats");
+        Function smooth_spline = pkg["smooth.spline"];
+        Function predict = pkg["predict"];
+        
+        // Calculate optimal smoothing parameters based on data size
+        double spar = std::min(1.0, std::max(0.5, log10(result_size) / 10.0));
+        
+        // Fit the smooth spline
+        List spline_fit = smooth_spline(Named("x") = pos_sub,
+                                      Named("y") = ksres,
+                                      Named("spar") = spar,
+                                      Named("keep.data") = false);
+        
+        // Predict values at original x positions to maintain dimension consistency
+        List predicted = predict(spline_fit, pos_sub);
+        NumericVector smoothed_y = as<NumericVector>(predicted["y"]);
+        
         return DataFrame::create(
             _["x"] = pos_sub,
             _["y"] = smoothed_y,
-            _["raw_y"] = ksres // Optional: include raw values
+            _["raw_y"] = ksres
         );
     } else {
         return DataFrame::create(
