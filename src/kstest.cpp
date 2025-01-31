@@ -109,21 +109,56 @@ inline NumericVector smooth_vector(const NumericVector& y, const IntegerVector& 
     const int n = y.size();
     NumericVector smoothed(n);
     
-    #pragma omp parallel for schedule(dynamic)
+    // Ensure window size is odd
+    window = (window % 2 == 0) ? window + 1 : window;
+    const int half_window = window / 2;
+    
+    // Pre-allocate vectors for the sliding window
+    std::vector<double> window_sum(n);
+    std::vector<int> window_count(n);
+    
+    // Initial window calculation
+    double sum = 0.0;
+    int count = 0;
+    
+    // Calculate first window
+    for(int i = 0; i <= half_window && i < n; i++) {
+        if(!R_IsNA(y[i])) {
+            sum += y[i];
+            count++;
+        }
+    }
+    
+    // Sliding window implementation
+    #pragma omp parallel for schedule(static, 1000) reduction(+:sum,count)
     for(int i = 0; i < n; i++) {
-        int start = std::max(0, i - window/2);
-        int end = std::min(n-1, i + window/2);
-        double sum = 0.0;
-        int count = 0;
+        // Remove leftmost value if possible
+        if(i > half_window) {
+            if(!R_IsNA(y[i - half_window - 1])) {
+                sum -= y[i - half_window - 1];
+                count--;
+            }
+        }
         
-        for(int j = start; j <= end; j++) {
-            if(!R_IsNA(y[j])) {
-                sum += y[j];
+        // Add rightmost value if possible
+        if(i + half_window < n) {
+            if(!R_IsNA(y[i + half_window])) {
+                sum += y[i + half_window];
                 count++;
             }
         }
-        smoothed[i] = count > 0 ? sum/count : NA_REAL;
+        
+        // Store results
+        window_sum[i] = sum;
+        window_count[i] = count;
     }
+    
+    // Calculate final smoothed values
+    #pragma omp parallel for schedule(static, 1000)
+    for(int i = 0; i < n; i++) {
+        smoothed[i] = window_count[i] > 0 ? window_sum[i] / window_count[i] : NA_REAL;
+    }
+    
     return smoothed;
 }
 
