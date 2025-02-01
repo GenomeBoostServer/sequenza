@@ -29,7 +29,12 @@ export(
     theoretical.depth.ratio,
     theoretical.mufreq,
     windowBf,
-    windowValues)
+    windowValues,
+    compare_bins,
+    rank_segments,
+    process_segments,
+    safely_compare_bins
+)
 
 importFrom("Rcpp",
     "evalCpp",
