@@ -29,11 +29,7 @@ export(
     theoretical.depth.ratio,
     theoretical.mufreq,
     windowBf,
-    windowValues,
-    compare_bins,
-    rank_segments,
-    process_segments,
-    safely_compare_bins
+    windowValues
 )
 
 importFrom("Rcpp",
@@ -142,9 +138,7 @@ importFrom("stats",
     "quantile",
     "sd",
     "setNames",
-    "weighted.mean",
-    "predict",
-    "na.omit"
+    "weighted.mean"
 )
 
 importFrom("utils",

@@ -23,19 +23,8 @@ Authors@R: c(
   )
 Depends: R (>= 4.0.0)
 LinkingTo: Rcpp, RcppArmadillo, RcppProgress
-Imports: Rcpp, 
-         stringr, 
-         dplyr, 
-         tibble, 
-         readr, 
-         pbapply,
-         squash,
-         iotools (>= 0.3-5), 
-         seqminer,
-         ks,
-         Runuran,
-         digest,
-         stats
+Imports: Rcpp, stringr, dplyr, tibble, readr, pbapply, squash, iotools (>= 0.3-5), 
+    seqminer, ks, Runuran, digest
 Suggests: testthat, knitr, rmarkdown, rmdformats
 License: GPL-3
 URL: https://sequenzatools.bitbucket.io, Mailing list:
