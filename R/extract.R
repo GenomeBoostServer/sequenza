@@ -15,7 +15,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     start_mem_used <- sum(start_mem[, 2])
 
     # Initialize parameters with all arguments
-    params <- initialize_extract_parameters(file = file, window = window,
+    params <- extract_initialize_parameters(file = file, window = window,
         overlap = overlap, slide_win = slide_win, peak_wins = peak_wins,
         normalization.method = normalization.method, ignore.normal = ignore.normal,
         verbose = verbose, chromosome.list = chromosome.list,
@@ -25,11 +25,11 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
         ...)
 
     # Validate input parameters
-    validate_params(params)
+    extract_validate_params(params)
 
     tryCatch({
         # Process GC content
-        gc_data <- process_gc_content(params$gc.stats, params$normalization.method)
+        gc_data <- extract_process_gc_content(params$gc.stats, params$normalization.method)
 
         gc_splines <- list(normal = smooth.spline(data.frame(gc = as.numeric(names(gc_data$normal_vect)),
             depth = gc_data$normal_vect)), tumor = smooth.spline(data.frame(gc = as.numeric(names(gc_data$tumor_vect)),
@@ -56,7 +56,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
                 results <- pbapply::pblapply(seq_along(params$chromosome.list),
                   function(idx) {
                     chr <- params$chromosome.list[idx]
-                    process_single_chromosome(chr, file, params$gc.stats,
+                    extract_process_chromosome(chr, file, params$gc.stats,
                       gc_splines, NULL, params)
                   }, cl = cl)
 
@@ -82,7 +82,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
             })
         } else {
             for (chr in params$chromosome.list) {
-                containers <- process_single_chromosome(chr,
+                containers <- extract_process_chromosome(chr,
                   file, params$gc.stats, gc_splines, containers,
                   params)
             }
@@ -172,7 +172,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
 }
 
 # Helper function to validate input parameters
-validate_params <- function(params) {
+extract_validate_params <- function(params) {
     required <- c("window", "overlap", "normalization.method")
     missing <- required[!required %in% names(params)]
     if (length(missing) > 0) {
@@ -185,7 +185,7 @@ validate_params <- function(params) {
     }
 }
 
-process_gc_content <- function(gc.stats, normalization.method) {
+extract_process_gc_content <- function(gc.stats, normalization.method) {
     if (!is.list(gc.stats) || !all(c("normal", "tumor") %in%
         names(gc.stats))) {
         stop("Invalid gc.stats format")
@@ -323,7 +323,7 @@ log_chromosome_results <- function(segments, seqz.data, mutations,
     message("Detected ", num_het_positions, " heterozygous positions.")
 }
 
-process_single_chromosome <- function(chr, file, gc_stats, gc_splines,
+extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
     containers, params) {
     if (params$verbose) {
         message("Processing chromosome ", chr)
@@ -406,7 +406,7 @@ process_single_chromosome <- function(chr, file, gc_stats, gc_splines,
     containers
 }
 
-initialize_extract_parameters <- function(file, window, overlap = 1,
+extract_initialize_parameters <- function(file, window, overlap = 1,
     slide_win = 100, peak_wins = seq(from = 50, to = 300, by = 25),
     normalization.method = "mean", ignore.normal = FALSE, verbose = TRUE,
     chromosome.list = NULL, breaks = NULL, min.mut.freq = 0.1,

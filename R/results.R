@@ -5,7 +5,7 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     female = TRUE, CNt.max = 20, ratio.priority = FALSE, XY = c(X = "X",
         Y = "Y"), chromosome.list = 1:24) {
     # Enhanced input validation
-    validate_results_input(sequenza.extract, sample.id, out.dir)
+    results_validate_input(sequenza.extract, sample.id, out.dir)
 
     # Create directory with better error handling
     dir.create(out.dir, recursive = TRUE, showWarnings = FALSE)
@@ -14,10 +14,10 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     }
 
     # Create file paths for all outputs
-    files <- create_output_paths(out.dir, sample.id)
+    files <- results_create_output_paths(out.dir, sample.id)
 
     # Validate inputs
-    validate_inputs(cp.table, cellularity, ploidy)
+    results_validate_params(cp.table, cellularity, ploidy)
 
     # Process segments
     segments_data <- process_segments_data(sequenza.extract,
@@ -38,8 +38,8 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     cellularity <- cp_results$cellularity
     ploidy <- cp_results$ploidy
 
-    # Process mutations and segments
-    results <- process_mutations_and_segments(sequenza.extract,
+    # Process mutations and segments with improved mutation handling
+    results <- results_process_mutations_and_segments(sequenza.extract,
         segments_data, cp_results, female, XY, CNt.max, ratio.priority,
         chromosome.list, files)
 
@@ -62,7 +62,7 @@ setup_output_dir <- function(out_dir) {
     }
 }
 
-create_output_paths <- function(out_dir, sample.id) {
+results_create_output_paths <- function(out_dir, sample.id) {
     make_filename <- function(x) file.path(out_dir, paste(sample.id,
         x, sep = "_"))
 
@@ -78,7 +78,7 @@ create_output_paths <- function(out_dir, sample.id) {
         log.file = make_filename("sequenza_log.txt"))
 }
 
-validate_inputs <- function(cp.table, cellularity, ploidy) {
+results_validate_params <- function(cp.table, cellularity, ploidy) {
     if (is.null(cp.table) && (is.null(cellularity) || is.null(ploidy))) {
         stop("cp.table and/or cellularity and ploidy argument are required.")
     }
@@ -186,7 +186,7 @@ process_cp_table <- function(cp.table, cellularity, ploidy, files,
         cp.table = NULL)
 }
 
-process_mutations_and_segments <- function(sequenza.extract,
+results_process_mutations_and_segments <- function(sequenza.extract,
     segments_data, cp_results, female, XY, CNt.max, ratio.priority,
     chromosome.list, files) {
     seg.tab <- segments_data$seg.tab
@@ -195,7 +195,20 @@ process_mutations_and_segments <- function(sequenza.extract,
     ploidy <- cp_results$ploidy
     avg.depth.ratio <- sequenza.extract$avg.depth.ratio
 
-    mut.tab <- na.exclude(do.call(rbind, sequenza.extract$mutations[chromosome.list]))
+    # Early check for mutations
+    mutations_list <- sequenza.extract$mutations[chromosome.list]
+    has_mutations <- any(sapply(mutations_list, function(x) !is.null(x) && nrow(x) > 0))
+    
+    if (!has_mutations) {
+        message("No mutations found in any chromosome")
+        mut.tab <- NULL
+    } else {
+        mut.tab <- na.exclude(do.call(rbind, mutations_list))
+        if (nrow(mut.tab) == 0) {
+            mut.tab <- NULL
+        }
+    }
+
     if (female) {
         segs.is.xy <- seg.tab$chromosome == XY["Y"]
         mut.is.xy <- mut.tab$chromosome == XY["Y"]
@@ -227,7 +240,7 @@ process_mutations_and_segments <- function(sequenza.extract,
     }
     write.table(seg.res, file = files$segs.file, col.names = TRUE,
         row.names = FALSE, sep = "\t", quote = FALSE)
-    if (nrow(mut.tab) > 0) {
+    if (!is.null(mut.tab) && nrow(mut.tab) > 0) {
         mut.alleles <- mufreq.bayes(mufreq = mut.tab$F[!mut.is.xy],
             CNt.max = CNt.max, depth.ratio = mut.tab$adjusted.ratio[!mut.is.xy],
             cellularity = cellularity, ploidy = ploidy, avg.depth.ratio = avg.depth.ratio,
@@ -318,19 +331,6 @@ generate_result_plots <- function(results, files, sequenza.extract,
     dev.off()
     message("\nChromosome plots completed")
 
-    # Chromosome view plots
-    pdf(files$chrw.file)
-    for (i in unique(seg.res$chromosome)) {
-        CNn <- if (!female && i %in% XY)
-            1 else 2
-        chromosome.view(mut.tab = sequenza.extract$mutations[[i]],
-            baf.windows = sequenza.extract$BAF[[i]], ratio.windows = sequenza.extract$ratio[[i]],
-            cellularity = cellularity, ploidy = ploidy, main = i,
-            segments = seg.res[seg.res$chromosome == i, ], avg.depth.ratio = avg.depth.ratio,
-            CNn = CNn, min.N.ratio = 1)
-    }
-    dev.off()
-
     # Peak windows plots
     pdf(files$peak_win.file, height = 5, width = 8)
     for (i in unique(seg.res$chromosome)) {
@@ -403,7 +403,7 @@ write_log_file <- function(log.file) {
 }
 
 # Add enhanced input validation
-validate_results_input <- function(sequenza.extract, sample.id,
+results_validate_input <- function(sequenza.extract, sample.id,
     out.dir) {
     if (!is.list(sequenza.extract)) {
         stop("sequenza.extract must be a list object from sequenza.extract()")
