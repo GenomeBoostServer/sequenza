@@ -87,3 +87,51 @@ pairs_ellipses <- function(A, z, iter, mu_a0, W_a0, mu_ar, active_clusts,
     mtext(paste("iter #", iter, sep = ""), side = 3, line = 3,
         outer = TRUE)
 }
+
+# Common plotting utilities
+plot_window_with_axis <- function(seqz.window, max_coord, ylim = c(0,
+    2.5), title = "", ylab = "", x.chr.space = 10) {
+    plotWindows(seqz.window, ylab = ylab, ylim = ylim, main = title)
+    par(xaxt = "s")
+    axis(labels = as.character(round(seq(0, max_coord/1e+06,
+        by = 10), 0)), side = 1, line = 0, at = seq(0, max_coord,
+        by = 1e+07), outer = FALSE, cex = par("cex.axis") * par("cex"))
+    mtext("Position (Mb)", side = 1, line = 3, outer = FALSE,
+        cex = par("cex.lab") * par("cex"))
+}
+
+# Common data validation
+validate_data_frame <- function(df, required_cols, context = "") {
+    # TODO: Add support for type checking of columns
+    # TODO: Add option for custom validation functions per column
+    if (!is.data.frame(df) || nrow(df) == 0) {
+        return(NULL)
+    }
+    missing <- setdiff(required_cols, names(df))
+    if (length(missing) > 0) {
+        warning(sprintf("%s missing required columns: %s", context,
+            paste(missing, collapse = ", ")))
+        return(NULL)
+    }
+    return(df)
+}
+
+# Enhanced error handling wrapper with backwards compatibility
+safely_execute <- function(expr, default = NULL, context = "", error_message = NULL) {
+    # FIXME: Consider adding support for warning handling and progress reporting
+    tryCatch(
+        expr,
+        error = function(e) {
+            # Use error_message if provided, otherwise fall back to context
+            msg <- if (!is.null(error_message)) {
+                sprintf("Warning: %s: %s", error_message, e$message)
+            } else if (context != "") {
+                sprintf("Warning: %s failed: %s", context, e$message)
+            } else {
+                sprintf("Warning: %s", e$message)
+            }
+            message(msg)
+            default
+        }
+    )
+}

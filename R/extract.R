@@ -29,7 +29,8 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
 
     tryCatch({
         # Process GC content
-        gc_data <- extract_process_gc_content(params$gc.stats, params$normalization.method)
+        gc_data <- extract_process_gc_content(params$gc.stats,
+            params$normalization.method)
 
         gc_splines <- list(normal = smooth.spline(data.frame(gc = as.numeric(names(gc_data$normal_vect)),
             depth = gc_data$normal_vect)), tumor = smooth.spline(data.frame(gc = as.numeric(names(gc_data$tumor_vect)),
@@ -325,85 +326,96 @@ log_chromosome_results <- function(segments, seqz.data, mutations,
 
 extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
     containers, params) {
-    if (params$verbose) {
-        message("Processing chromosome ", chr)
-    }
+    # TODO: Add support for chromosome-specific parameters
+    # FIXME: Better handling of chromosome edge cases
+    # TODO: Consider adding checkpointing for long-running processes
 
-    # Read chromosome data
-    file.lines <- gc_stats$file.metrics[which(params$chr.vect ==
-        chr), ]
-    seqz.data <- read.seqz(file, n_lines = c(file.lines$start,
-        file.lines$end), chr_name = chr)
+    # Use safely_execute for chromosome processing
+    safely_execute({
+        # Read and process chromosome data
+        file.lines <- gc_stats$file.metrics[which(params$chr.vect ==
+            chr), ]
+        seqz.data <- read.seqz(file, n_lines = c(file.lines$start,
+            file.lines$end), chr_name = chr)
 
-    # Process depths and get modified seqz.data
-    depths_result <- process_depths(seqz.data, gc_splines, params$avg_depths,
-        params$ignore.normal)
-    seqz.data <- depths_result$seqz.data  # Use updated seqz.data
+        # Validate seqz.data
+        seqz.data <- validate_data_frame(seqz.data, c("depth.tumor",
+            "depth.normal", "GC.percent"), "Chromosome data")
+        if (is.null(seqz.data))
+            return(NULL)
 
-    # Calculate windows with initialized data
-    windows <- calculate_windows(seqz.data = seqz.data, depths = depths_result,
-        window = params$window, overlap = params$overlap, avg_depths = params$avg_depths)
+        # Process depths and get modified seqz.data
+        depths_result <- process_depths(seqz.data, gc_splines,
+            params$avg_depths, params$ignore.normal)
+        seqz.data <- depths_result$seqz.data  # Use updated seqz.data
 
-    # Process BAF if heterozygous positions exist
-    seqz.het <- seqz.data[seqz.data$zygosity.normal == "het",
-        ]
-    num_het_positions <- nrow(seqz.het)
-    if (num_het_positions > 0) {
-        windows$baf <- windowBf(Af = seqz.het$Af, Bf = seqz.het$Bf,
-            good.reads = seqz.het$good.reads, chromosomes = seqz.het$chromosome,
-            positions = seqz.het$position, conf = 0.95, window = params$window,
-            overlap = params$overlap)
-    } else {
-        windows$baf <- list(data.frame(start = min(seqz.data$position,
-            na.rm = TRUE), end = max(seqz.data$position, na.rm = TRUE),
-            mean = 0, q0 = 0, q1 = 0, N = 1))
-    }
+        # Calculate windows with initialized data
+        windows <- calculate_windows(seqz.data = seqz.data, depths = depths_result,
+            window = params$window, overlap = params$overlap,
+            avg_depths = params$avg_depths)
 
-    # Add debug message
-    if (params$verbose) {
-        message("Windows calculation results for chr ", chr,
-            ":")
-        message("  ratio entries: ", nrow(windows$ratio[[1]]))
-        message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
-        message("  BAF entries: ", nrow(windows$baf[[1]]))
-    }
+        # Process BAF if heterozygous positions exist
+        seqz.het <- seqz.data[seqz.data$zygosity.normal == "het",
+            ]
+        num_het_positions <- nrow(seqz.het)
+        if (num_het_positions > 0) {
+            windows$baf <- windowBf(Af = seqz.het$Af, Bf = seqz.het$Bf,
+                good.reads = seqz.het$good.reads, chromosomes = seqz.het$chromosome,
+                positions = seqz.het$position, conf = 0.95, window = params$window,
+                overlap = params$overlap)
+        } else {
+            windows$baf <- list(data.frame(start = min(seqz.data$position,
+                na.rm = TRUE), end = max(seqz.data$position,
+                na.rm = TRUE), mean = 0, q0 = 0, q1 = 0, N = 1))
+        }
 
-    # Process segments
-    segments <- process_segments(seqz.data, params$breaks, chr,
-        windows, params)
+        # Add debug message
+        if (params$verbose) {
+            message("Windows calculation results for chr ", chr,
+                ":")
+            message("  ratio entries: ", nrow(windows$ratio[[1]]))
+            message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
+            message("  BAF entries: ", nrow(windows$baf[[1]]))
+        }
 
-    # Ensure seqz.data has necessary columns for
-    # mutation.table
-    required_columns <- c("good.reads", "depth.normal")
-    if (!all(required_columns %in% colnames(seqz.data))) {
-        stop("seqz.data is missing required columns for mutation.table")
-    }
+        # Process segments
+        segments <- process_segments(seqz.data, params$breaks,
+            chr, windows, params)
 
-    # Process mutations using mutation.table
+        # Ensure seqz.data has necessary columns for
+        # mutation.table
+        required_columns <- c("good.reads", "depth.normal")
+        if (!all(required_columns %in% colnames(seqz.data))) {
+            stop("seqz.data is missing required columns for mutation.table")
+        }
 
-    mutations <- tryCatch({
-        mutation.table(seqz.data, mufreq.threshold = params$min.mut.freq,
-            min.reads = params$min.reads, min.reads.normal = params$min.reads.normal,
-            max.mut.types = params$max.mut.types, min.type.freq = params$min.type.freq,
-            min.fw.freq = params$min.fw.freq, segments = segments$seg)
-    }, error = function(e) {
-        message("Warning: Mutation table calculation failed: ",
-            e$message)
-        data.frame()  # Return an empty data frame on error
-    })
+        # Process mutations using mutation.table
+
+        mutations <- tryCatch({
+            mutation.table(seqz.data, mufreq.threshold = params$min.mut.freq,
+                min.reads = params$min.reads, min.reads.normal = params$min.reads.normal,
+                max.mut.types = params$max.mut.types, min.type.freq = params$min.type.freq,
+                min.fw.freq = params$min.fw.freq, segments = segments$seg)
+        }, error = function(e) {
+            message("Warning: Mutation table calculation failed: ",
+                e$message)
+            data.frame()  # Return an empty data frame on error
+        })
 
 
-    # Store results
-    containers <- store_chromosome_results(list(windows = windows,
-        segments = segments, mutations = mutations, norm_gc_stats = depths_result$norm_gc_stats),
-        containers, chr, which(params$chromosome.list == chr))
+        # Store results
+        containers <- store_chromosome_results(list(windows = windows,
+            segments = segments, mutations = mutations, norm_gc_stats = depths_result$norm_gc_stats),
+            containers, chr, which(params$chromosome.list ==
+                chr))
 
-    if (params$verbose) {
-        log_chromosome_results(segments, seqz.data, mutations,
-            num_het_positions)
-    }
+        if (params$verbose) {
+            log_chromosome_results(segments, seqz.data, mutations,
+                num_het_positions)
+        }
 
-    containers
+        containers
+    }, NULL, sprintf("Processing chromosome %s", chr))
 }
 
 extract_initialize_parameters <- function(file, window, overlap = 1,
@@ -593,6 +605,10 @@ rank_segments <- function(breaks_list, windows, params) {
 # Update process_segments to use new rank_segments
 process_segments <- function(seqz.data, breaks, chr, windows,
     params) {
+    # TODO: Add support for alternative segmentation methods
+    # FIXME: Current segmentation can be memory intensive for large chromosomes
+    # TODO: Consider adding parallel processing for break detection
+
     # Ensure weighted.mean has a default value if not in
     # params
     weighted.mean <- if (!is.null(params$weighted.mean)) {

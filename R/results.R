@@ -38,7 +38,8 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     cellularity <- cp_results$cellularity
     ploidy <- cp_results$ploidy
 
-    # Process mutations and segments with improved mutation handling
+    # Process mutations and segments with improved mutation
+    # handling
     results <- results_process_mutations_and_segments(sequenza.extract,
         segments_data, cp_results, female, XY, CNt.max, ratio.priority,
         chromosome.list, files)
@@ -120,13 +121,14 @@ plot_depths <- function(sequenza.extract, seg.tab, depths.file) {
         max_coord_chr_i <- max(sequenza.extract$ratio[[i]]$end)
         par(mfcol = c(3, 2), xaxt = "n", mar = c(0, 4, 3, 0),
             oma = c(5, 0, 4, 0))
-        plotWindows(sequenza.extract$depths$raw$normal[[i]],
-            ylab = "normal depth", ylim = c(0, 2.5), main = paste("raw",
-                i, sep = " "))
-        plotWindows(sequenza.extract$depths$raw$tumor[[i]], ylab = "tumor depth",
-            ylim = c(0, 2.5))
-        plotWindows(sequenza.extract$raw_ratio[[i]], ylab = "depth ratio",
-            ylim = c(0, 2.5))
+
+        # Use utility function for each plot
+        plot_window_with_axis(sequenza.extract$depths$raw$normal[[i]],
+            max_coord_chr_i, title = paste("raw", i), ylab = "normal depth")
+        plot_window_with_axis(sequenza.extract$depths$raw$tumor[[i]],
+            max_coord_chr_i, title = paste("raw", i), ylab = "tumor depth")
+        plot_window_with_axis(sequenza.extract$raw_ratio[[i]],
+            max_coord_chr_i, title = paste("raw", i), ylab = "depth ratio")
         par(xaxt = "s")
         axis(labels = as.character(round(seq(0, max_coord_chr_i/1e+06,
             by = 10), 0)), side = 1, line = 0, at = seq(0, max_coord_chr_i,
@@ -135,13 +137,14 @@ plot_depths <- function(sequenza.extract, seg.tab, depths.file) {
         mtext("Position (Mb)", side = 1, line = 3, outer = FALSE,
             cex = par("cex.lab") * par("cex"))
         par(xaxt = "n")
-        plotWindows(sequenza.extract$depths$norm$normal[[i]],
-            ylab = "normal depth", ylim = c(0, 2.5), main = paste("normalized",
-                i, sep = " "))
-        plotWindows(sequenza.extract$depths$norm$tumor[[i]],
-            ylab = "tumor depth", ylim = c(0, 2.5))
-        plotWindows(sequenza.extract$ratio[[i]], ylab = "depth ratio",
-            ylim = c(0, 2.5))
+        plot_window_with_axis(sequenza.extract$depths$norm$normal[[i]],
+            max_coord_chr_i, title = paste("normalized", i),
+            ylab = "normal depth")
+        plot_window_with_axis(sequenza.extract$depths$norm$tumor[[i]],
+            max_coord_chr_i, title = paste("normalized", i),
+            ylab = "tumor depth")
+        plot_window_with_axis(sequenza.extract$ratio[[i]], max_coord_chr_i,
+            title = paste("normalized", i), ylab = "depth ratio")
         par(xaxt = "s")
         axis(labels = as.character(round(seq(0, max_coord_chr_i/1e+06,
             by = 10), 0)), side = 1, line = 0, at = seq(0, max_coord_chr_i,
@@ -189,6 +192,17 @@ process_cp_table <- function(cp.table, cellularity, ploidy, files,
 results_process_mutations_and_segments <- function(sequenza.extract,
     segments_data, cp_results, female, XY, CNt.max, ratio.priority,
     chromosome.list, files) {
+
+    # Early mutation validation using utility function
+    mutations_list <- sequenza.extract$mutations[chromosome.list]
+    mut.tab <- safely_execute({
+        combined_mutations <- do.call(rbind, mutations_list)
+        validate_data_frame(na.exclude(combined_mutations), c("chromosome",
+            "position", "F", "mutation"), "Mutations table")
+    }, NULL, "Mutation processing")
+
+    # Process segments using existing code but with utility
+    # functions
     seg.tab <- segments_data$seg.tab
     seg.len <- segments_data$seg.len
     cellularity <- cp_results$cellularity
@@ -197,8 +211,9 @@ results_process_mutations_and_segments <- function(sequenza.extract,
 
     # Early check for mutations
     mutations_list <- sequenza.extract$mutations[chromosome.list]
-    has_mutations <- any(sapply(mutations_list, function(x) !is.null(x) && nrow(x) > 0))
-    
+    has_mutations <- any(sapply(mutations_list, function(x) !is.null(x) &&
+        nrow(x) > 0))
+
     if (!has_mutations) {
         message("No mutations found in any chromosome")
         mut.tab <- NULL
