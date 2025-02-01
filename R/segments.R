@@ -666,6 +666,11 @@ rank_segments <- function(breaks_list, windows, params) {
   baf_win <- windows$baf[[1]]
   ratio_win <- windows$ratio[[1]]
 
+  # Ensure breaks_list has proper names
+  if (is.null(names(breaks_list))) {
+    names(breaks_list) <- as.character(params$peak_wins)
+  }
+
   # Calculate segment comparisons in parallel if possible
   compare_bins_list <- if (params$parallel > 1) {
     pbapply::pblapply(breaks_list, function(x) {
@@ -811,7 +816,15 @@ rank_segments <- function(breaks_list, windows, params) {
 
   # Select best window size based on maximum score
   best_idx <- which.max(scores)
-  select_win <- compare_bins_segs$peak_win[best_idx]
+  select_win <- params$peak_wins[best_idx]
+  
+  # Safely get the breaks using numeric index instead of character key
+  selected_breaks <- breaks_list[[best_idx]]
+  
+  if (is.null(selected_breaks)) {
+    warning("Selected breaks is NULL, using first available breaks")
+    selected_breaks <- breaks_list[[1]]
+  }
 
   # Add scores to output for debugging
   compare_bins_segs$composite_score <- scores
@@ -834,7 +847,7 @@ rank_segments <- function(breaks_list, windows, params) {
   }
 
   list(
-    segs = breaks_list[[as.character(select_win)]], selected_win = select_win,
+    segs = selected_breaks, selected_win = select_win,
     peak_win = compare_bins_segs,
     weights = params$segment_weights,  # Store weights in output
     chromosome = params$chromosome     # Store chromosome name
