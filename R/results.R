@@ -1,10 +1,9 @@
 #' @rdname sequenza
 #' @export
-sequenza.results <- function(
-  sequenza.extract, cp.table = NULL, sample.id, out.dir = getwd(),
-  cellularity = NULL, ploidy = NULL, female = TRUE, CNt.max = 20, ratio.priority = FALSE,
-  XY = c(X = "X", Y = "Y"), chromosome.list = 1:24
-) {
+sequenza.results <- function(sequenza.extract, cp.table = NULL, sample.id, out.dir = getwd(),
+                             cellularity = NULL, ploidy = NULL, female = TRUE, CNt.max = 20,
+                             ratio.priority = FALSE, XY = c(X = "X", Y = "Y"),
+                             chromosome.list = 1:24) {
   # Enhanced input validation
   validate_results_input(sequenza.extract, sample.id, out.dir)
 
@@ -39,12 +38,16 @@ sequenza.results <- function(
 
   # Process mutations and segments
   results <- process_mutations_and_segments(
-    sequenza.extract, segments_data, cp_results,
-    female, XY, CNt.max, ratio.priority, chromosome.list, files
+    sequenza.extract, segments_data,
+    cp_results, female, XY, CNt.max,
+    ratio.priority, chromosome.list, files
   )
 
   # Generate plots with progress tracking
-  generate_result_plots(results, files, sequenza.extract, cellularity, ploidy,
+  generate_result_plots(
+    results, files,
+    sequenza.extract,
+    cellularity, ploidy,
     female, cp_results,
     XY = XY
   )
@@ -67,14 +70,22 @@ create_output_paths <- function(out_dir, sample.id) {
   make_filename <- function(x) file.path(out_dir, paste(sample.id, x, sep = "_"))
 
   list(
-    cp.file = make_filename("CP_contours.pdf"), cint.file = make_filename("confints_CP.txt"),
-    chrw.file = make_filename("chromosome_view.pdf"), depths.file = make_filename("chromosome_depths.pdf"),
-    gc.file = make_filename("gc_plots.pdf"), peak_win.file = make_filename("peak_windows_plots.pdf"),
-    peak_dens.file = make_filename("peak_density_plots.pdf"), geno.file = make_filename("genome_view.pdf"),
-    cn.file = make_filename("CN_bars.pdf"), fit.file = make_filename("model_fit.pdf"),
-    alt.file = make_filename("alternative_solutions.txt"), afit.file = make_filename("alternative_fit.pdf"),
-    muts.file = make_filename("mutations.txt"), segs.file = make_filename("segments.txt"),
-    robj.extr = make_filename("sequenza_extract.RData"), robj.fit = make_filename("sequenza_cp_table.RData"),
+    cp.file = make_filename("CP_contours.pdf"),
+    cint.file = make_filename("confints_CP.txt"),
+    chrw.file = make_filename("chromosome_view.pdf"),
+    depths.file = make_filename("chromosome_depths.pdf"),
+    gc.file = make_filename("gc_plots.pdf"),
+    peak_win.file = make_filename("peak_windows_plots.pdf"),
+    peak_dens.file = make_filename("peak_density_plots.pdf"),
+    geno.file = make_filename("genome_view.pdf"),
+    cn.file = make_filename("CN_bars.pdf"),
+    fit.file = make_filename("model_fit.pdf"),
+    alt.file = make_filename("alternative_solutions.txt"),
+    afit.file = make_filename("alternative_fit.pdf"),
+    muts.file = make_filename("mutations.txt"),
+    segs.file = make_filename("segments.txt"),
+    robj.extr = make_filename("sequenza_extract.RData"),
+    robj.fit = make_filename("sequenza_cp_table.RData"),
     log.file = make_filename("sequenza_log.txt")
   )
 }
@@ -200,15 +211,17 @@ process_cp_table <- function(cp.table, cellularity, ploidy, files, sample.id) {
       ploidy <- cint$max.ploidy
     }
     dev.off()
-    return(list(cellularity = cellularity, ploidy = ploidy, cint = cint, cp.table = cp.table))
+    return(list(
+      cellularity = cellularity,
+      ploidy = ploidy,
+      cint = cint,
+      cp.table = cp.table
+    ))
   }
   list(cellularity = cellularity, ploidy = ploidy, cint = NULL, cp.table = NULL)
 }
 
-process_mutations_and_segments <- function(
-  sequenza.extract, segments_data, cp_results,
-  female, XY, CNt.max, ratio.priority, chromosome.list, files
-) {
+process_mutations_and_segments <- function(sequenza.extract, segments_data, cp_results, female, XY, CNt.max, ratio.priority, chromosome.list, files) {
   seg.tab <- segments_data$seg.tab
   seg.len <- segments_data$seg.len
   cellularity <- cp_results$cellularity
@@ -250,8 +263,8 @@ process_mutations_and_segments <- function(
     }
   }
   write.table(seg.res,
-    file = files$segs.file, col.names = TRUE, row.names = FALSE,
-    sep = "\t", quote = FALSE
+    file = files$segs.file, col.names = TRUE, row.names = FALSE, sep = "\t",
+    quote = FALSE
   )
   if (nrow(mut.tab) > 0) {
     mut.alleles <- mufreq.bayes(
@@ -297,12 +310,8 @@ track_progress <- function(total, verbose = TRUE, label = "") {
   }
 }
 
-# Enhance generate_result_plots with progress tracking and better memory
-# management
-generate_result_plots <- function(
-  results, files, sequenza.extract, cellularity,
-  ploidy, female, cp_results, XY
-) {
+# Enhance generate_result_plots with progress tracking and better memory management
+generate_result_plots <- function(results, files, sequenza.extract, cellularity, ploidy, female, cp_results, XY) {
   seg.res <- results$seg.res
   mut.tab <- results$mut.tab
   avg.depth.ratio <- sequenza.extract$avg.depth.ratio
@@ -326,23 +335,26 @@ generate_result_plots <- function(
     chr <- chrs[i]
     message("\nProcessing chromosome ", chr)
 
-    CNn <- if (!female && chr %in% XY) {
-      1
-    } else {
-      2
-    }
+    CNn <- if (!female && chr %in% XY) 1 else 2
 
     # Get only needed data for this chromosome
     chr_data <- list(
-      mutations = sequenza.extract$mutations[[chr]], baf = sequenza.extract$BAF[[chr]],
+      mutations = sequenza.extract$mutations[[chr]],
+      baf = sequenza.extract$BAF[[chr]],
       ratio = sequenza.extract$ratio[[chr]]
     )
 
     chromosome.view(
-      mut.tab = chr_data$mutations, baf.windows = chr_data$baf,
-      ratio.windows = chr_data$ratio, cellularity = cellularity, ploidy = ploidy,
-      main = chr, segments = seg.res[seg.res$chromosome == chr, ], avg.depth.ratio = avg.depth.ratio,
-      CNn = CNn, min.N.ratio = 1
+      mut.tab = chr_data$mutations,
+      baf.windows = chr_data$baf,
+      ratio.windows = chr_data$ratio,
+      cellularity = cellularity,
+      ploidy = ploidy,
+      main = chr,
+      segments = seg.res[seg.res$chromosome == chr, ],
+      avg.depth.ratio = avg.depth.ratio,
+      CNn = CNn,
+      min.N.ratio = 1
     )
 
     # Update progress
@@ -358,15 +370,18 @@ generate_result_plots <- function(
   # Chromosome view plots
   pdf(files$chrw.file)
   for (i in unique(seg.res$chromosome)) {
-    CNn <- if (!female && i %in% XY) {
-      1
-    } else {
-      2
-    }
+    CNn <- if (!female && i %in% XY) 1 else 2
     chromosome.view(
-      mut.tab = sequenza.extract$mutations[[i]], baf.windows = sequenza.extract$BAF[[i]],
-      ratio.windows = sequenza.extract$ratio[[i]], cellularity = cellularity,
-      ploidy = ploidy, main = i, segments = seg.res[seg.res$chromosome == i, ], avg.depth.ratio = avg.depth.ratio, CNn = CNn, min.N.ratio = 1
+      mut.tab = sequenza.extract$mutations[[i]],
+      baf.windows = sequenza.extract$BAF[[i]],
+      ratio.windows = sequenza.extract$ratio[[i]],
+      cellularity = cellularity,
+      ploidy = ploidy,
+      main = i,
+      segments = seg.res[seg.res$chromosome == i, ],
+      avg.depth.ratio = avg.depth.ratio,
+      CNn = CNn,
+      min.N.ratio = 1
     )
   }
   dev.off()
@@ -398,23 +413,31 @@ generate_result_plots <- function(
   cn.sizes <- sapply(cn.sizes, "sum")
   pdf(files$cn.file)
   barplot(round(cn.sizes / sum(cn.sizes) * 100),
-    names = names(cn.sizes), las = 1,
-    ylab = "Percentage (%)", xlab = "Copy number"
+    names = names(cn.sizes),
+    las = 1,
+    ylab = "Percentage (%)",
+    xlab = "Copy number"
   )
   dev.off()
 
   # Write confidence intervals if available
   if (!is.null(cp_results$cint)) {
-    res.tab <- data.frame(cellularity = c(
-      cint$confint.cellularity[1], cint$max.cellularity[1],
-      cint$confint.cellularity[2]
-    ), ploidy.estimate = c(
-      cint$confint.ploidy[1],
-      cint$max.ploidy[1], cint$confint.ploidy[2]
-    ), ploidy.mean.cn = weighted.mean(
-      x = as.integer(names(cn.sizes)),
-      w = cn.sizes
-    ))
+    res.tab <- data.frame(
+      cellularity = c(
+        cint$confint.cellularity[1],
+        cint$max.cellularity[1],
+        cint$confint.cellularity[2]
+      ),
+      ploidy.estimate = c(
+        cint$confint.ploidy[1],
+        cint$max.ploidy[1],
+        cint$confint.ploidy[2]
+      ),
+      ploidy.mean.cn = weighted.mean(
+        x = as.integer(names(cn.sizes)),
+        w = cn.sizes
+      )
+    )
     write.table(res.tab, files$cint.file,
       col.names = TRUE, row.names = FALSE,
       sep = "\t", quote = FALSE
@@ -423,20 +446,26 @@ generate_result_plots <- function(
 
   # Model fit plots
   pdf(files$fit.file, width = 6, height = 6)
-  baf.model.view(cellularity = cellularity, ploidy = ploidy, segs = seg.res[!segs.is.xy, ])
+  baf.model.view(
+    cellularity = cellularity,
+    ploidy = ploidy,
+    segs = seg.res[!segs.is.xy, ]
+  )
   dev.off()
 
   # Alternative solutions if available
   if (!is.null(cp_results$cp.table)) {
     alt.sol <- alternative.cp.solutions(cp_results$cp.table)
     write.table(alt.sol,
-      file = files$alt.file, col.names = TRUE, row.names = FALSE,
+      file = files$alt.file,
+      col.names = TRUE, row.names = FALSE,
       sep = "\t", quote = FALSE
     )
     pdf(files$afit.file)
     for (sol in seq_len(nrow(alt.sol))) {
       baf.model.view(
-        cellularity = alt.sol$cellularity[sol], ploidy = alt.sol$ploidy[sol],
+        cellularity = alt.sol$cellularity[sol],
+        ploidy = alt.sol$ploidy[sol],
         segs = seg.res[!segs.is.xy, ]
       )
     }
@@ -462,9 +491,10 @@ validate_results_input <- function(sequenza.extract, sample.id, out.dir) {
   required_components <- c("BAF", "ratio", "raw_ratio", "mutations", "segments")
   missing <- setdiff(required_components, names(sequenza.extract))
   if (length(missing) > 0) {
-    stop("Missing required components in sequenza.extract: ", paste(missing,
-      collapse = ", "
-    ))
+    stop(
+      "Missing required components in sequenza.extract: ",
+      paste(missing, collapse = ", ")
+    )
   }
 
   if (!is.character(sample.id) || length(sample.id) != 1) {

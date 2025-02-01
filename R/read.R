@@ -7,19 +7,12 @@ read.seqz <- function(
     "chromosome", "position", "base.ref",
     "depth.normal", "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
     "GC.percent", "good.reads", "AB.normal", "AB.tumor", "tumor.strand"
-  ), cache = TRUE,
-  ...
+  ), cache = TRUE, ...
 ) {
   # Validate and normalize inputs
-  if (!file.exists(file)) {
-    stop("File not found: ", file)
-  }
-  if (parallel < 1) {
-    stop("parallel must be >= 1")
-  }
-  if (buffer < 1024) {
-    warning("Very small buffer size may impact performance")
-  }
+  if (!file.exists(file)) stop("File not found: ", file)
+  if (parallel < 1) stop("parallel must be >= 1")
+  if (buffer < 1024) warning("Very small buffer size may impact performance")
 
   # Check cache for repeated reads
   if (cache) {
@@ -31,10 +24,11 @@ read.seqz <- function(
 
   # Process line ranges more efficiently
   range_info <- if (!is.null(n_lines)) {
-    if (length(n_lines) != 2) {
-      stop("n_lines must be NULL or length 2")
-    }
-    list(skip = n_lines[1], n_max = diff(round(sort(n_lines))) + 1)
+    if (length(n_lines) != 2) stop("n_lines must be NULL or length 2")
+    list(
+      skip = n_lines[1],
+      n_max = diff(round(sort(n_lines))) + 1
+    )
   } else {
     list(skip = 1, n_max = Inf)
   }
@@ -75,8 +69,14 @@ read.seqz.chr <- function(file, chr_name, col_names, col_types, skip, buffer, pa
 
     # Process chunk with optimized settings
     chunk_data <- read_tsv(
-      file = chunk_text, col_types = col_types, col_names = col_names,
-      skip = 0, n_max = Inf, progress = FALSE, show_col_types = FALSE, lazy = TRUE # Enable lazy reading
+      file = chunk_text,
+      col_types = col_types,
+      col_names = col_names,
+      skip = 0,
+      n_max = Inf,
+      progress = FALSE,
+      show_col_types = FALSE,
+      lazy = TRUE # Enable lazy reading
     )
 
     # Efficient chromosome filtering using data.table-style optimization
@@ -90,8 +90,13 @@ read.seqz.chr <- function(file, chr_name, col_names, col_types, skip, buffer, pa
 
   # Process chunks with correct parameters
   results <- chunk.apply(
-    input = con, FUN = parse_chunk, chr_name = chr_name, col_names = col_names,
-    col_types = col_types, CH.MAX.SIZE = buffer, CH.PARALLEL = parallel
+    input = con,
+    FUN = parse_chunk,
+    chr_name = chr_name,
+    col_names = col_names,
+    col_types = col_types,
+    CH.MAX.SIZE = buffer,
+    CH.PARALLEL = parallel
   )
 
   # Convert to tibble efficiently
@@ -102,13 +107,10 @@ read.seqz.tbi <- function(file, chr_name, col_names) {
   # Handle different coordinate formats correctly
   tabix_range <- if (!is.null(chr_name)) {
     if (grepl(":", chr_name)) {
-      # Parse coordinates in format 'chr:start-end'
+      # Parse coordinates in format "chr:start-end"
       parts <- strsplit(chr_name, "[:-]")[[1]]
       if (length(parts) != 3) {
-        stop(
-          "Invalid coordinate format. Expected 'chr:start-end', got: ",
-          chr_name
-        )
+        stop("Invalid coordinate format. Expected 'chr:start-end', got: ", chr_name)
       }
       chr_name # Keep original format if it includes coordinates
     } else {
@@ -120,7 +122,10 @@ read.seqz.tbi <- function(file, chr_name, col_names) {
   }
 
   # Read tabix data efficiently
-  res <- tabix.read.table(file, tabix_range, col.names = TRUE, stringsAsFactors = FALSE)
+  res <- tabix.read.table(file, tabix_range,
+    col.names = TRUE,
+    stringsAsFactors = FALSE
+  )
 
   # Set column names efficiently
   setNames(as_tibble(res), col_names)

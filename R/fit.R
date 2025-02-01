@@ -1,23 +1,16 @@
 #' @rdname sequenza
 #' @export
-sequenza.fit <- function(
-  sequenza.extract, female = TRUE, N.ratio.filter = 10, N.BAF.filter = 1,
-  segment.filter = 3e+06, mufreq.threshold = 0.1, XY = c(X = "X", Y = "Y"), cellularity = seq(
-    0.1,
-    1, 0.01
-  ), ploidy = seq(1, 7, 0.1), ratio.priority = FALSE, method = "baf",
-  priors.table = data.frame(CN = 2, value = 2), chromosome.list = 1:24, mc.cores = getOption(
-    "mc.cores",
-    2L
-  ), verbose = TRUE
-) {
+sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
+                         N.BAF.filter = 1, segment.filter = 3e6, mufreq.threshold = 0.1,
+                         XY = c(X = "X", Y = "Y"), cellularity = seq(0.1, 1, 0.01),
+                         ploidy = seq(1, 7, 0.1), ratio.priority = FALSE, method = "baf",
+                         priors.table = data.frame(CN = 2, value = 2), chromosome.list = 1:24,
+                         mc.cores = getOption("mc.cores", 2L), verbose = TRUE) {
   # Validate input
   validate_fit_input(sequenza.extract, method, ploidy, cellularity)
 
   # Add progress tracking
-  if (verbose) {
-    message("Starting sequenza fit analysis...")
-  }
+  if (verbose) message("Starting sequenza fit analysis...")
 
   # Prepare input data with progress tracking
   data <- tryCatch(
@@ -34,37 +27,57 @@ sequenza.fit <- function(
   # Process method with better error handling
   result <- tryCatch({
     if (method == "baf") {
-      process_baf_method(data$segs, data$segs_len,
+      process_baf_method(
+        data$segs, data$segs_len,
         filters = list(
           N.ratio = N.ratio.filter,
-          N.BAF = N.BAF.filter, segment = segment.filter
-        ), params = list(
+          N.BAF = N.BAF.filter,
+          segment = segment.filter
+        ),
+        params = list(
           female = female,
-          XY = XY, cellularity = cellularity, ploidy = ploidy, ratio.priority = ratio.priority,
-          priors.table = priors.table, mc.cores = mc.cores, verbose = verbose
+          XY = XY,
+          cellularity = cellularity,
+          ploidy = ploidy,
+          ratio.priority = ratio.priority,
+          priors.table = priors.table,
+          mc.cores = mc.cores,
+          verbose = verbose
         ),
         avg.depth.ratio = avg.depth.ratio
       )
     } else if (method == "mufreq") {
-      process_mufreq_method(data$mutations, params = list(
-        female = female,
-        XY = XY, cellularity = cellularity, ploidy = ploidy, threshold = mufreq.threshold,
-        priors.table = priors.table, mc.cores = mc.cores
-      ), avg.depth.ratio = avg.depth.ratio)
+      process_mufreq_method(
+        data$mutations,
+        params = list(
+          female = female,
+          XY = XY,
+          cellularity = cellularity,
+          ploidy = ploidy,
+          threshold = mufreq.threshold,
+          priors.table = priors.table,
+          mc.cores = mc.cores
+        ),
+        avg.depth.ratio = avg.depth.ratio
+      )
     }
   }, error = function(e) {
     stop("Error in ", method, " method: ", e$message)
   }, finally = {
-    if (verbose) {
-      message("Analysis completed")
-    }
+    if (verbose) message("Analysis completed")
   })
 
   # Add metadata to results
-  result$params <- list(method = method, female = female, filters = list(
-    N.ratio = N.ratio.filter,
-    N.BAF = N.BAF.filter, segment = segment.filter
-  ), chromosomes = chromosome.list)
+  result$params <- list(
+    method = method,
+    female = female,
+    filters = list(
+      N.ratio = N.ratio.filter,
+      N.BAF = N.BAF.filter,
+      segment = segment.filter
+    ),
+    chromosomes = chromosome.list
+  )
 
   return(result)
 }
@@ -112,14 +125,18 @@ prepare_fit_data <- function(sequenza.extract, chromosome.list) {
   mutations <- na.exclude(mutations)
   segs_len <- segments$end.pos - segments$start.pos
 
-  list(mutations = mutations, segs = segments, segs_len = segs_len)
+  list(
+    mutations = mutations,
+    segs = segments,
+    segs_len = segs_len
+  )
 }
 
 # Process data using BAF method
 process_baf_method <- function(segs, segs_len, filters, params, avg.depth.ratio) {
   # Process in chunks if data is large
-  if (nrow(segs) > 1e+05) {
-    chunk_size <- 1e+05
+  if (nrow(segs) > 1e5) {
+    chunk_size <- 1e5
     n_chunks <- ceiling(nrow(segs) / chunk_size)
 
     results <- vector("list", n_chunks)
@@ -127,10 +144,7 @@ process_baf_method <- function(segs, segs_len, filters, params, avg.depth.ratio)
 
     for (i in seq_len(n_chunks)) {
       idx <- ((i - 1) * chunk_size + 1):min(i * chunk_size, nrow(segs))
-      results[[i]] <- process_baf_chunk(
-        segs[idx, ], segs_len[idx], filters,
-        params, avg.depth.ratio
-      )
+      results[[i]] <- process_baf_chunk(segs[idx, ], segs_len[idx], filters, params, avg.depth.ratio)
       progress(i)
     }
 
@@ -146,14 +160,21 @@ process_baf_method <- function(segs, segs_len, filters, params, avg.depth.ratio)
   filtered <- filter_segments(segs, segs_len, filters, params$female, params$XY)
 
   # Calculate segment lengths in megabases
-  seg_len_mb <- segs_len[filtered$mask] / 1e+06
+  seg_len_mb <- segs_len[filtered$mask] / 1e6
 
   # Use baf.model.fit from bayes.R
   baf.model.fit(
-    Bf = filtered$data$Bf, depth.ratio = filtered$data$depth.ratio,
-    sd.ratio = filtered$data$sd.ratio, weight.ratio = seg_len_mb, sd.Bf = filtered$data$sd.BAF,
-    weight.Bf = seg_len_mb, avg.depth.ratio = avg.depth.ratio, cellularity = params$cellularity,
-    ploidy = params$ploidy, priors.table = params$priors.table, mc.cores = params$mc.cores,
+    Bf = filtered$data$Bf,
+    depth.ratio = filtered$data$depth.ratio,
+    sd.ratio = filtered$data$sd.ratio,
+    weight.ratio = seg_len_mb,
+    sd.Bf = filtered$data$sd.BAF,
+    weight.Bf = seg_len_mb,
+    avg.depth.ratio = avg.depth.ratio,
+    cellularity = params$cellularity,
+    ploidy = params$ploidy,
+    priors.table = params$priors.table,
+    mc.cores = params$mc.cores,
     ratio.priority = params$ratio.priority
   )
 }
@@ -172,18 +193,21 @@ process_mufreq_method <- function(mutations, params, avg.depth.ratio) {
   weights <- round(filtered$good.reads, 0)
 
   mufreq.model.fit(
-    mufreq = filtered$F, depth.ratio = filtered$adjusted.ratio,
-    weight.ratio = 2 * weights, weight.mufreq = weights, avg.depth.ratio = avg.depth.ratio,
-    cellularity = params$cellularity, ploidy = params$ploidy, priors.table = params$priors.table,
+    mufreq = filtered$F,
+    depth.ratio = filtered$adjusted.ratio,
+    weight.ratio = 2 * weights,
+    weight.mufreq = weights,
+    avg.depth.ratio = avg.depth.ratio,
+    cellularity = params$cellularity,
+    ploidy = params$ploidy,
+    priors.table = params$priors.table,
     mc.cores = params$mc.cores
   )
 }
 
 # Calculate average standard deviations for segments
 calculate_segment_sds <- function(segs) {
-  avg.sd.ratio <- sum(segs$sd.ratio * segs$N.ratio, na.rm = TRUE) / sum(segs$N.ratio,
-    na.rm = TRUE
-  )
+  avg.sd.ratio <- sum(segs$sd.ratio * segs$N.ratio, na.rm = TRUE) / sum(segs$N.ratio, na.rm = TRUE)
   avg.sd.Bf <- sum(segs$sd.BAF * segs$N.BAF, na.rm = TRUE) / sum(segs$N.BAF, na.rm = TRUE)
   list(sd.ratio = avg.sd.ratio, sd.Bf = avg.sd.Bf)
 }
