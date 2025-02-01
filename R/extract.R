@@ -374,9 +374,7 @@ store_chromosome_results <- function(results, containers, chr, idx) {
   containers$norm.gc.list[[idx]] <- results$norm_gc_stats
   containers$rank_peaks.list[[idx]] <- list(
     selected_win = results$segments$selected_win,
-    peak_win = results$segments$peak_win,
-    chromosome = chr,
-    weights = results$segments$weights
+    peak_win = results$segments$peak_win
   )
   return(containers)
 }

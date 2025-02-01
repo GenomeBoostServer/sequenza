@@ -566,22 +566,6 @@ plot_peaks_win <- function(rank_wins_peak,
   op <- par(no.readonly = TRUE)
   on.exit(par(op))
 
-  # Calculate point sizes based on number of points
-  n_points <- nrow(rank_wins_peak$peak_win)
-  base_size <- if(n_points > 50) {
-    0.6
-  } else if(n_points > 20) {
-    0.8
-  } else {
-    1.0
-  }
-  
-  # Scale selected point size relative to base size
-  selected_size <- base_size * 1.7
-  point_sizes <- rep(base_size, n_points)
-  selected_idx <- which(rank_wins_peak$peak_win$peak_win == rank_wins_peak$selected_win)
-  point_sizes[selected_idx] <- selected_size
-
   if (show_details) {
     # 3x2 layout for detailed view
     layout(matrix(c(1, 2, 3, 4, 5, 6), nrow = 3, byrow = TRUE))
@@ -616,12 +600,12 @@ plot_peaks_win <- function(rank_wins_peak,
   points(
     x = selected_win,
     y = peak_win$baf_fit[selected_idx],
-    pch = 21, bg = colors$selected, cex = selected_size
+    pch = 21, bg = colors$selected, cex = 2.5
   )
   points(
     x = selected_win,
     y = peak_win$ratio_fit[selected_idx],
-    pch = 21, bg = colors$selected, cex = selected_size
+    pch = 21, bg = colors$selected, cex = 2.5
   )
   legend("topright", c("BAF fit", "Ratio fit", "Selected"),
     col = c(colors$baf, colors$ratio, "black"),
@@ -646,12 +630,12 @@ plot_peaks_win <- function(rank_wins_peak,
   points(
     x = selected_win,
     y = peak_win$baf_penalty[selected_idx],
-    pch = 21, bg = colors$selected, cex = selected_size
+    pch = 21, bg = colors$selected, cex = 2.5
   )
   points(
     x = selected_win,
     y = peak_win$ratio_penalty[selected_idx],
-    pch = 21, bg = colors$selected, cex = selected_size
+    pch = 21, bg = colors$selected, cex = 2.5
   )
 
   if (show_details) {
@@ -667,7 +651,7 @@ plot_peaks_win <- function(rank_wins_peak,
     points(
       x = selected_win,
       y = elbow_scores[selected_idx],
-      pch = 21, bg = colors$selected, cex = selected_size
+      pch = 21, bg = colors$selected, cex = 2.5
     )
 
     # 4. Plot segment counts with penalty
@@ -682,7 +666,7 @@ plot_peaks_win <- function(rank_wins_peak,
     points(
       x = selected_win,
       y = seg_counts[selected_idx],
-      pch = 21, bg = colors$selected, cex = selected_size
+      pch = 21, bg = colors$selected, cex = 2.5
     )
 
     # 5. Plot window size penalty
@@ -697,7 +681,7 @@ plot_peaks_win <- function(rank_wins_peak,
     points(
       x = selected_win,
       y = window_penalty[selected_idx],
-      pch = 21, bg = colors$selected, cex = selected_size
+      pch = 21, bg = colors$selected, cex = 2.5
     )
 
     # 6. Plot final composite score
@@ -711,7 +695,7 @@ plot_peaks_win <- function(rank_wins_peak,
     points(
       x = selected_win,
       y = peak_win$composite_score[selected_idx],
-      pch = 21, bg = colors$selected, cex = selected_size
+      pch = 21, bg = colors$selected, cex = 2.5
     )
   }
 

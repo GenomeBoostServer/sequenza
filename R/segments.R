@@ -119,40 +119,15 @@ extract_breaks <- function(
 
 extract_breaks_tracks <- function(track, breaks, slide_win, peak_win, assembly, chromosome) {
   if (is.null(breaks)) {
-    # Try to get assembly arms from UCSC
-    arms <- tryCatch({
-      golden_path <- paste("http://hgdownload.cse.ucsc.edu", "goldenPath", assembly,
-        "database", "cytoBand.txt.gz",
-        sep = "/"
-      )
-      get_assembly(url = golden_path, prefix = "chr")
-    }, error = function(e) {
-      # Fallback: Create a simple arm structure for the whole chromosome
-      warning("Could not fetch chromosome arms from UCSC. Using fallback single-arm structure.")
-      data.frame(
-        chromosome = chromosome,
-        start = min(track$x, na.rm = TRUE),
-        end = max(track$x, na.rm = TRUE),
-        arm = "q",
-        stringsAsFactors = FALSE
-      )
-    })
-
+    golden_path <- paste("http://hgdownload.cse.ucsc.edu", "goldenPath", assembly,
+      "database", "cytoBand.txt.gz",
+      sep = "/"
+    )
+    arms <- get_assembly(url = golden_path, prefix = "chr")
     chr_arm <- gsub(x = chromosome, pattern = "chr", replacement = "")
     chr_arm <- paste0("chr", chr_arm)
+
     arms_i <- arms[arms$chromosome == chr_arm, ]
-
-    # If no arms found for this chromosome, create a fallback
-    if (nrow(arms_i) == 0) {
-      arms_i <- data.frame(
-        chromosome = chromosome,
-        start = min(track$x, na.rm = TRUE),
-        end = max(track$x, na.rm = TRUE),
-        arm = "q",
-        stringsAsFactors = FALSE
-      )
-    }
-
     peaks_tracks(track, peak_win, arms_i, chromosome)
   } else {
     breaks
@@ -708,9 +683,6 @@ rank_segments <- function(breaks_list, windows, params) {
     baf_score <- normalize(compare_bins_segs$baf_fit)
     ratio_score <- normalize(compare_bins_segs$ratio_fit)
 
-    # Penlty for long runs of outliers
-    long_run_penalty <- normalize(compare_bins_segs$baf_penalty + compare_bins_segs$ratio_penalty)
-
     # Calculate combined fit score
     combined_fit <- (baf_score + ratio_score) / 2
 
@@ -793,8 +765,8 @@ rank_segments <- function(breaks_list, windows, params) {
     window_penalty <- normalize(window_sizes) * 0.05
 
     # Combine scores with emphasis on elbow point
-    final_scores <- weights$fit * combined_fit + weights$elbow * elbow_score + weights$window * window_penalty -
-      (weights$segments * segment_bonus  + weights$penalty * long_run_penalty)
+    final_scores <- weights$fit * combined_fit + weights$elbow * elbow_score +
+      weights$segments * segment_bonus - weights$window * window_penalty
 
     if (params$verbose) {
       message("\nElbow point analysis:")
@@ -896,7 +868,7 @@ process_segments <- function(seqz.data, breaks, chr, windows, params) {
     segment_results <- rank_segments(breaks_chr_list, windows, params)
     return(list(
       seg = segment_results$segs, breaks_list = breaks_chr_list, selected_win = segment_results$selected_win,
-      peak_win = segment_results$peak_win, weights = params$segment_weights, chromosome = chr
+      peak_win = segment_results$peak_win
     ))
   } else {
     segs <- segment.breaks(
@@ -912,6 +884,6 @@ process_segments <- function(seqz.data, breaks, chr, windows, params) {
       segs$end.pos, segs$depth.ratio, seqz.r.win[[chr]]
     ), n_segs = nrow(segs))
 
-    list(segs = segs, selected_win = select_win, peak_win = compare_bins_segs, weights = NULL, chromosome = chr)
+    list(segs = segs, selected_win = select_win, peak_win = compare_bins_segs)
   }
 }
