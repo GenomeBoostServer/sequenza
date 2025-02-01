@@ -77,23 +77,6 @@
   \item{sample.id}{identifier of the sample, to be used as a prefix for saved objects.}
   \item{out.dir}{output directory where the files and objects will be saved.}
   \item{mc.cores}{legacy argument to set the number of cores, but it refers to the \code{cl} of \code{\link{pblapply}}. It uses \code{\link{mclapply}} when set to an integer.}
-  \item{segment_weights}{List of weights for segment scoring:
-    \itemize{
-      \item{fit}: Weight for raw fit quality of segments (default: 0.8). Higher values favor segments that better match the data.
-      \item{penalty}: Weight for consecutive outliers penalty (default: 0.4). Higher values more strongly penalize long runs of outliers.
-      \item{elbow}: Weight for proximity to the elbow point in the fit curve (default: 0.1). Higher values favor selecting window sizes near where marginal improvements in fit begin to diminish.
-      \item{segments}: Weight for segment count before the elbow point (default: 0.1). Higher values favor solutions with more segments up to the elbow point, promoting finer segmentation where supported by the data.
-      \item{window}: Window size penalty weight (default: 0.05). Higher values more strongly prefer smaller window sizes when fit scores are similar.
-    }
-    
-    The weights control the tradeoff between different aspects of segmentation:
-    \itemize{
-      \item Higher \code{fit} and lower \code{penalty} weights will favor solutions that match the data closely
-      \item Higher \code{elbow} weights help avoid oversegmentation by identifying diminishing returns
-      \item Higher \code{segments} weights allow more segments when supported by clear evidence
-      \item Higher \code{window} weights prefer more granular analysis when possible
-    }
-  }
 }
 
 \details{
