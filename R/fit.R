@@ -6,21 +6,23 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
     ploidy = seq(1, 7, 0.1), ratio.priority = FALSE, method = "baf",
     priors.table = data.frame(CN = 2, value = 2), chromosome.list = 1:24,
     mc.cores = getOption("mc.cores", 2L), verbose = TRUE) {
-    
-    # Validate sequenza.extract is a list with required components
+
+    # Validate sequenza.extract is a list with required
+    # components
     if (!is.list(sequenza.extract)) {
         stop("sequenza.extract must be a list object from sequenza.extract()")
     }
-    
+
     required_components <- c("mutations", "segments", "avg.depth.ratio")
     missing <- setdiff(required_components, names(sequenza.extract))
     if (length(missing) > 0) {
-        stop("Missing required components in sequenza.extract: ", 
+        stop("Missing required components in sequenza.extract: ",
             paste(missing, collapse = ", "))
     }
 
     # Add progress tracking
-    if (verbose) message("Starting sequenza fit analysis...")
+    if (verbose)
+        message("Starting sequenza fit analysis...")
 
     # Prepare input data with error handling
     data <- safely_execute({
@@ -33,45 +35,23 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
 
     avg.depth.ratio <- sequenza.extract$avg.depth.ratio
 
-    # Process method with better error handling and progress tracking
+    # Process method with better error handling and
+    # progress tracking
     result <- safely_execute({
         if (method == "baf") {
             message("Processing BAF method...")
-            process_baf_method(
-                data$segs,
-                data$segs_len,
-                filters = list(
-                    N.ratio = N.ratio.filter,
-                    N.BAF = N.BAF.filter,
-                    segment = segment.filter
-                ),
-                params = list(
-                    female = female,
-                    XY = XY,
-                    cellularity = cellularity,
-                    ploidy = ploidy,
-                    ratio.priority = ratio.priority,
-                    priors.table = priors.table,
-                    mc.cores = mc.cores,
-                    verbose = verbose
-                ),
-                avg.depth.ratio = avg.depth.ratio
-            )
+            process_baf_method(data$segs, data$segs_len, filters = list(N.ratio = N.ratio.filter,
+                N.BAF = N.BAF.filter, segment = segment.filter),
+                params = list(female = female, XY = XY, cellularity = cellularity,
+                  ploidy = ploidy, ratio.priority = ratio.priority,
+                  priors.table = priors.table, mc.cores = mc.cores,
+                  verbose = verbose), avg.depth.ratio = avg.depth.ratio)
         } else if (method == "mufreq") {
             message("Processing mutation frequency method...")
-            process_mufreq_method(
-                data$mutations,
-                params = list(
-                    female = female,
-                    XY = XY,
-                    cellularity = cellularity,
-                    ploidy = ploidy,
-                    threshold = mufreq.threshold,
-                    priors.table = priors.table,
-                    mc.cores = mc.cores
-                ),
-                avg.depth.ratio = avg.depth.ratio
-            )
+            process_mufreq_method(data$mutations, params = list(female = female,
+                XY = XY, cellularity = cellularity, ploidy = ploidy,
+                threshold = mufreq.threshold, priors.table = priors.table,
+                mc.cores = mc.cores), avg.depth.ratio = avg.depth.ratio)
         }
     }, error_message = sprintf("Error in %s method", method))
 
@@ -80,18 +60,11 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
     }
 
     # Add metadata to results with validation
-    result$params <- list(
-        method = method,
-        female = female,
-        filters = list(
-            N.ratio = N.ratio.filter,
-            N.BAF = N.BAF.filter,
-            segment = segment.filter
-        ),
-        chromosomes = chromosome.list
-    )
+    result$params <- list(method = method, female = female, filters = list(N.ratio = N.ratio.filter,
+        N.BAF = N.BAF.filter, segment = segment.filter), chromosomes = chromosome.list)
 
-    if (verbose) message("Analysis completed successfully")
+    if (verbose)
+        message("Analysis completed successfully")
     return(result)
 }
 
@@ -111,11 +84,8 @@ prepare_fit_data <- function(sequenza.extract, chromosome.list) {
     }
 
     # Validate segments data
-    segments <- validate_data_frame(
-        segments,
-        c("start.pos", "end.pos", "chromosome"),
-        "Segments"
-    )
+    segments <- validate_data_frame(segments, c("start.pos",
+        "end.pos", "chromosome"), "Segments")
     if (is.null(segments)) {
         stop("Invalid segments data")
     }
@@ -124,21 +94,15 @@ prepare_fit_data <- function(sequenza.extract, chromosome.list) {
     mutations <- na.exclude(mutations)
     segs_len <- segments$end.pos - segments$start.pos
 
-    list(
-        mutations = mutations,
-        segs = segments,
-        segs_len = segs_len
-    )
+    list(mutations = mutations, segs = segments, segs_len = segs_len)
 }
 
 # Process BAF method with better validation
-process_baf_method <- function(segs, segs_len, filters, params, avg.depth.ratio) {
+process_baf_method <- function(segs, segs_len, filters, params,
+    avg.depth.ratio) {
     # Validate required columns for BAF method
-    segs <- validate_data_frame(
-        segs,
-        c("sd.ratio", "sd.BAF", "N.ratio", "N.BAF", "Bf", "depth.ratio"),
-        "BAF segments"
-    )
+    segs <- validate_data_frame(segs, c("sd.ratio", "sd.BAF",
+        "N.ratio", "N.BAF", "Bf", "depth.ratio"), "BAF segments")
     if (is.null(segs)) {
         stop("Invalid segment data for BAF method")
     }
@@ -186,11 +150,8 @@ process_baf_method <- function(segs, segs_len, filters, params, avg.depth.ratio)
 # Process mutation frequency method with validation
 process_mufreq_method <- function(mutations, params, avg.depth.ratio) {
     # Validate mutations data
-    mutations <- validate_data_frame(
-        mutations,
-        c("F", "good.reads", "adjusted.ratio", "chromosome"),
-        "Mutations"
-    )
+    mutations <- validate_data_frame(mutations, c("F", "good.reads",
+        "adjusted.ratio", "chromosome"), "Mutations")
     if (is.null(mutations)) {
         stop("Invalid mutation data")
     }

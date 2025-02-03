@@ -15,10 +15,10 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     start_mem_used <- sum(start_mem[, 2])
 
     # Initialize parameters with all arguments
-    params <- extract_initialize_parameters(file = file, window = window, 
-        overlap = overlap, slide_win = slide_win, peak_wins = peak_wins, support_threshold = support_threshold,
-        normalization.method = normalization.method, ignore.normal = ignore.normal,
-        verbose = verbose, chromosome.list = chromosome.list,
+    params <- extract_initialize_parameters(file = file, window = window,
+        overlap = overlap, slide_win = slide_win, peak_wins = peak_wins,
+        support_threshold = support_threshold, normalization.method = normalization.method,
+        ignore.normal = ignore.normal, verbose = verbose, chromosome.list = chromosome.list,
         breaks = breaks, assembly = assembly, gc.stats = gc.stats,
         do_raster = do_raster, smooth_gc = smooth_gc, min_times_gc = min_times_gc,
         gc_grid = gc_grid, parallel = parallel, weighted.mean = weighted.mean,
@@ -103,44 +103,51 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
 
             # Track memory usage of all processes
             if (params$parallel > 1) {
-                # Get worker processes from parallel cluster instead of system commands
+                # Get worker processes from parallel
+                # cluster instead of system commands
                 n_workers <- if (!is.null(cl)) {
-                    length(cl)
+                  length(cl)
                 } else {
-                    0
+                  0
                 }
-                
+
                 total_mem <- end_mem_used  # Start with main process memory
 
                 if (n_workers > 0) {
-                    # Get memory usage from cluster if available
-                    worker_mems <- tryCatch({
-                        if (.Platform$OS.type == "unix") {
-                            # Use ps for Unix-like systems
-                            pids <- unlist(parallel::clusterCall(cl, Sys.getpid))
-                            mem_cmd <- sprintf("ps -o rss= %s", paste(pids, collapse = " "))
-                            as.numeric(system(mem_cmd, intern = TRUE))/1024
-                        } else {
-                            # For Windows, just use main process memory
-                            rep(end_mem_used/n_workers, n_workers)
-                        }
-                    }, error = function(e) {
-                        message("Warning: Could not get worker memory usage")
-                        rep(0, n_workers)
-                    })
-                    
-                    total_mem <- end_mem_used + sum(worker_mems, na.rm = TRUE)
+                  # Get memory usage from cluster if
+                  # available
+                  worker_mems <- tryCatch({
+                    if (.Platform$OS.type == "unix") {
+                      # Use ps for Unix-like systems
+                      pids <- unlist(parallel::clusterCall(cl,
+                        Sys.getpid))
+                      mem_cmd <- sprintf("ps -o rss= %s", paste(pids,
+                        collapse = " "))
+                      as.numeric(system(mem_cmd, intern = TRUE))/1024
+                    } else {
+                      # For Windows, just use main process
+                      # memory
+                      rep(end_mem_used/n_workers, n_workers)
+                    }
+                  }, error = function(e) {
+                    message("Warning: Could not get worker memory usage")
+                    rep(0, n_workers)
+                  })
+
+                  total_mem <- end_mem_used + sum(worker_mems,
+                    na.rm = TRUE)
                 }
 
                 message(sprintf("Peak memory usage (main process): %.2f GB",
-                    max(0, end_mem_used/1024)))
+                  max(0, end_mem_used/1024)))
                 message(sprintf("Peak memory usage (all processes): %.2f GB",
-                    max(0, total_mem/1024)))
-                message(sprintf("Number of worker processes: %d", n_workers))
+                  max(0, total_mem/1024)))
+                message(sprintf("Number of worker processes: %d",
+                  n_workers))
             } else {
                 total_mem <- end_mem_used
                 message(sprintf("Peak memory usage: %.2f GB",
-                    max(0, total_mem/1024)))
+                  max(0, total_mem/1024)))
             }
 
             # Calculate total mutations and covered bases
@@ -298,7 +305,8 @@ initialize_extract_containers <- function(chromosome.list) {
         n_chr), windows.tumor = vector("list", n_chr), windows.n_normal = vector("list",
         n_chr), windows.n_tumor = vector("list", n_chr), mutation.list = vector("list",
         n_chr), segments.list = vector("list", n_chr), norm.gc.list = vector("list",
-        n_chr), rank_peaks.list = vector("list", n_chr), all_segments = vector("list", n_chr)  # Add new field
+        n_chr), rank_peaks.list = vector("list", n_chr), all_segments = vector("list",
+        n_chr)  # Add new field
 )
     names(containers$windows.baf) <- chromosome.list
     names(containers$windows.ratio) <- chromosome.list
@@ -344,8 +352,9 @@ log_chromosome_results <- function(segments, seqz.data, mutations,
 extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
     containers, params) {
     # TODO: Add support for chromosome-specific parameters
-    # FIXME: Better handling of chromosome edge cases
-    # TODO: Consider adding checkpointing for long-running processes
+    # FIXME: Better handling of chromosome edge cases TODO:
+    # Consider adding checkpointing for long-running
+    # processes
 
     # Use safely_execute for chromosome processing
     safely_execute({
@@ -388,8 +397,8 @@ extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
 
         # Add debug message
         if (params$verbose) {
-            message("\nWindows calculation results for chr ", chr,
-                ":")
+            message("\nWindows calculation results for chr ",
+                chr, ":")
             message("  ratio entries: ", nrow(windows$ratio[[1]]))
             message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
             message("  BAF entries: ", nrow(windows$baf[[1]]))
@@ -467,9 +476,10 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
 
     # Return complete parameter list
     list(window = window, overlap = overlap, slide_win = slide_win,
-        peak_wins = peak_wins, support_threshold = support_threshold, normalization.method = normalization.method,
-        ignore.normal = ignore.normal, verbose = verbose, assembly = assembly,
-        chromosome.list = chromosome.list, breaks = if (is.null(dim(breaks))) NULL else breaks,
+        peak_wins = peak_wins, support_threshold = support_threshold,
+        normalization.method = normalization.method, ignore.normal = ignore.normal,
+        verbose = verbose, assembly = assembly, chromosome.list = chromosome.list,
+        breaks = if (is.null(dim(breaks))) NULL else breaks,
         chr.vect = chr.vect, min.mut.freq = min.mut.freq, min.reads = min.reads,
         min.reads.normal = min.reads.normal, min.reads.baf = min.reads.baf,
         max.mut.types = max.mut.types, min.type.freq = min.type.freq,
@@ -622,9 +632,10 @@ rank_segments <- function(breaks_list, windows, params) {
 # Update process_segments to use new rank_segments
 process_segments <- function(seqz.data, breaks, chr, windows,
     params) {
-    # TODO: Add support for alternative segmentation methods
-    # FIXME: Current segmentation can be memory intensive for large chromosomes
-    # TODO: Consider adding parallel processing for break detection
+    # TODO: Add support for alternative segmentation
+    # methods FIXME: Current segmentation can be memory
+    # intensive for large chromosomes TODO: Consider adding
+    # parallel processing for break detection
 
     # Ensure weighted.mean has a default value if not in
     # params
@@ -667,23 +678,26 @@ process_segments <- function(seqz.data, breaks, chr, windows,
         })
 
         names(breaks_chr_list) <- as.character(params$peak_wins)
-        # Return segment rank and information with breaks_list
+        # Return segment rank and information with
+        # breaks_list
         segment_results <- rank_segments(breaks_chr_list, windows,
             params)
-        # breakpoints_consensus <- debug_evaluate_consensus(breaks_chr_list, windows, params$support_threshold)
+        # breakpoints_consensus <-
+        # debug_evaluate_consensus(breaks_chr_list,
+        # windows, params$support_threshold)
 
-        # newbreaks <- as.data.frame(do.call(rbind, lapply(breakpoints_consensus$supported_breaks, unlist)))
-        # newbreaks <- newbreaks[order(newbreaks$position), ]
+        # newbreaks <- as.data.frame(do.call(rbind,
+        # lapply(breakpoints_consensus$supported_breaks,
+        # unlist))) newbreaks <-
+        # newbreaks[order(newbreaks$position), ]
 
-        # breaks_chr <- cbind(chrom=chr, position_to_breaks(newbreaks$position))
-        # segs <- segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
-        #     min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean)
-        return(list(
-            seg = segment_results$segs,
-            breaks_list = breaks_chr_list,  # Always include breaks_list
-            selected_win = segment_results$selected_win,
-            peak_win = segment_results$peak_win
-        ))
+        # breaks_chr <- cbind(chrom=chr,
+        # position_to_breaks(newbreaks$position)) segs <-
+        # segment.breaks(seqz.tab = seqz.data, breaks =
+        # breaks_chr, min.reads.baf = params$min.reads.baf,
+        # weighted.mean = weighted.mean)
+        return(list(seg = segment_results$segs, breaks_list = breaks_chr_list,
+            selected_win = segment_results$selected_win, peak_win = segment_results$peak_win))
     } else {
         breaks_chr <- breaks[breaks$chrom == chr, ]
         segs <- segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
@@ -694,15 +708,12 @@ process_segments <- function(seqz.data, breaks, chr, windows,
             segs$end.pos, segs$depth.ratio, seqz.r.win[[chr]]),
             n_segs = nrow(segs))
 
-        # Create single-element breaks_list for user-provided breaks
-        breaks_chr_list <- list("user" = segs)
-        
-        return(list(
-            seg = segs,
-            breaks_list = breaks_chr_list,  # Include breaks_list even for user breaks
-            selected_win = select_win,
-            peak_win = compare_bins_segs
-        ))
+        # Create single-element breaks_list for
+        # user-provided breaks
+        breaks_chr_list <- list(user = segs)
+
+        return(list(seg = segs, breaks_list = breaks_chr_list,
+            selected_win = select_win, peak_win = compare_bins_segs))
     }
 }
 
