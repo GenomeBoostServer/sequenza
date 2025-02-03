@@ -161,7 +161,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
                 message(sprintf("Peak memory usage (all processes): %.2f GB",
                   max(0, total_mem/1024)))
                 message(sprintf("Number of worker processes: %d",
-                  length(child_pids)))
+                  n_workers))
             } else {
                 message(sprintf("Peak memory usage: %.2f GB",
                   max(0, total_mem/1024)))
