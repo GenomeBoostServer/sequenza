@@ -1,7 +1,7 @@
 #' @rdname sequenza
 #' @export
 sequenza.extract <- function(file, window = 1e+06, overlap = 1,
-    slide_win = 100, peak_wins = seq(from = 50, to = 1000, by = 75),
+    slide_win = 100, peak_wins = 2^(1:10) * 10, support_threshold = 0.2,
     normalization.method = "mean", ignore.normal = FALSE, verbose = TRUE,
     chromosome.list = NULL, breaks = NULL, min.mut.freq = 0.1,
     min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
@@ -15,8 +15,8 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     start_mem_used <- sum(start_mem[, 2])
 
     # Initialize parameters with all arguments
-    params <- extract_initialize_parameters(file = file, window = window,
-        overlap = overlap, slide_win = slide_win, peak_wins = peak_wins,
+    params <- extract_initialize_parameters(file = file, window = window, 
+        overlap = overlap, slide_win = slide_win, peak_wins = peak_wins, support_threshold = support_threshold,
         normalization.method = normalization.method, ignore.normal = ignore.normal,
         verbose = verbose, chromosome.list = chromosome.list,
         breaks = breaks, assembly = assembly, gc.stats = gc.stats,
@@ -76,6 +76,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
                   containers$mutation.list[[idx]] <- results[[idx]]$mutation.list[[idx]]
                   containers$norm.gc.list[[idx]] <- results[[idx]]$norm.gc.list[[idx]]
                   containers$rank_peaks.list[[idx]] <- results[[idx]]$rank_peaks.list[[idx]]
+                  containers$all_segments[[idx]] <- results[[idx]]$all_segments[[idx]]
                 }
             }, error = function(e) {
                 message("Error in parallel processing: ", e$message)
@@ -102,30 +103,44 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
 
             # Track memory usage of all processes
             if (params$parallel > 1) {
-                # Get all child process IDs (on Unix-like
-                # systems)
-                child_pids <- tryCatch({
-                  suppressWarnings(system(sprintf("pgrep -P %d",
-                    Sys.getpid()), intern = TRUE))
-                }, error = function(e) character(0))
-
+                # Get worker processes from parallel cluster instead of system commands
+                n_workers <- if (!is.null(cl)) {
+                    length(cl)
+                } else {
+                    0
+                }
+                
                 total_mem <- end_mem_used  # Start with main process memory
 
-                if (length(child_pids) > 0) {
-                  # Use ps command to get memory usage for
-                  # each child process
-                  mem_cmd <- sprintf("ps -o rss= %s", paste(child_pids,
-                    collapse = " "))
-                  child_mems <- try(as.numeric(system(mem_cmd,
-                    intern = TRUE))/1024, silent = TRUE)
-
-                  if (!inherits(child_mems, "try-error")) {
-                    total_mem <- total_mem + sum(child_mems,
-                      na.rm = TRUE)
-                  }
+                if (n_workers > 0) {
+                    # Get memory usage from cluster if available
+                    worker_mems <- tryCatch({
+                        if (.Platform$OS.type == "unix") {
+                            # Use ps for Unix-like systems
+                            pids <- unlist(parallel::clusterCall(cl, Sys.getpid))
+                            mem_cmd <- sprintf("ps -o rss= %s", paste(pids, collapse = " "))
+                            as.numeric(system(mem_cmd, intern = TRUE))/1024
+                        } else {
+                            # For Windows, just use main process memory
+                            rep(end_mem_used/n_workers, n_workers)
+                        }
+                    }, error = function(e) {
+                        message("Warning: Could not get worker memory usage")
+                        rep(0, n_workers)
+                    })
+                    
+                    total_mem <- end_mem_used + sum(worker_mems, na.rm = TRUE)
                 }
+
+                message(sprintf("Peak memory usage (main process): %.2f GB",
+                    max(0, end_mem_used/1024)))
+                message(sprintf("Peak memory usage (all processes): %.2f GB",
+                    max(0, total_mem/1024)))
+                message(sprintf("Number of worker processes: %d", n_workers))
             } else {
                 total_mem <- end_mem_used
+                message(sprintf("Peak memory usage: %.2f GB",
+                    max(0, total_mem/1024)))
             }
 
             # Calculate total mutations and covered bases
@@ -283,7 +298,7 @@ initialize_extract_containers <- function(chromosome.list) {
         n_chr), windows.tumor = vector("list", n_chr), windows.n_normal = vector("list",
         n_chr), windows.n_tumor = vector("list", n_chr), mutation.list = vector("list",
         n_chr), segments.list = vector("list", n_chr), norm.gc.list = vector("list",
-        n_chr), rank_peaks.list = vector("list", n_chr)  # Add new field
+        n_chr), rank_peaks.list = vector("list", n_chr), all_segments = vector("list", n_chr)  # Add new field
 )
     names(containers$windows.baf) <- chromosome.list
     names(containers$windows.ratio) <- chromosome.list
@@ -296,6 +311,7 @@ initialize_extract_containers <- function(chromosome.list) {
     names(containers$segments.list) <- chromosome.list
     names(containers$norm.gc.list) <- chromosome.list
     names(containers$rank_peaks.list) <- chromosome.list
+    names(containers$all_segments) <- chromosome.list
     return(containers)
 }
 
@@ -314,6 +330,7 @@ store_chromosome_results <- function(results, containers, chr,
     containers$norm.gc.list[[idx]] <- results$norm_gc_stats
     containers$rank_peaks.list[[idx]] <- list(selected_win = results$segments$selected_win,
         peak_win = results$segments$peak_win)
+    containers$all_segments[[idx]] <- results$segments$breaks_list
     return(containers)
 }
 
@@ -371,7 +388,7 @@ extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
 
         # Add debug message
         if (params$verbose) {
-            message("Windows calculation results for chr ", chr,
+            message("\nWindows calculation results for chr ", chr,
                 ":")
             message("  ratio entries: ", nrow(windows$ratio[[1]]))
             message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
@@ -419,7 +436,7 @@ extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
 }
 
 extract_initialize_parameters <- function(file, window, overlap = 1,
-    slide_win = 100, peak_wins = seq(from = 50, to = 300, by = 25),
+    slide_win = 100, peak_wins = 2^(1:10) * 10, support_threshold = 0.2,
     normalization.method = "mean", ignore.normal = FALSE, verbose = TRUE,
     chromosome.list = NULL, breaks = NULL, min.mut.freq = 0.1,
     min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
@@ -450,7 +467,7 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
 
     # Return complete parameter list
     list(window = window, overlap = overlap, slide_win = slide_win,
-        peak_wins = peak_wins, normalization.method = normalization.method,
+        peak_wins = peak_wins, support_threshold = support_threshold, normalization.method = normalization.method,
         ignore.normal = ignore.normal, verbose = verbose, assembly = assembly,
         chromosome.list = chromosome.list, breaks = if (is.null(dim(breaks))) NULL else breaks,
         chr.vect = chr.vect, min.mut.freq = min.mut.freq, min.reads = min.reads,
@@ -524,7 +541,7 @@ finalize_extract_results <- function(containers, params, gc_stats,
         chromosomes = params$chromosome.list, gc = gc_stats,
         gc_norm = gc_norm, avg.depth.ratio = depths$avg_depth_ratio,
         avg.depth.tumor = depths$avg_tum_depth, avg.depth.normal = depths$avg_nor_depth,
-        mutation_stats = mutation_stats)
+        mutation_stats = mutation_stats, all_segments = containers$all_segments)
 }
 
 # Add error handling wrapper
@@ -650,21 +667,42 @@ process_segments <- function(seqz.data, breaks, chr, windows,
         })
 
         names(breaks_chr_list) <- as.character(params$peak_wins)
-        # Return segment rank and information
+        # Return segment rank and information with breaks_list
         segment_results <- rank_segments(breaks_chr_list, windows,
             params)
-        return(list(seg = segment_results$segs, breaks_list = breaks_chr_list,
-            selected_win = segment_results$selected_win, peak_win = segment_results$peak_win))
+        # breakpoints_consensus <- debug_evaluate_consensus(breaks_chr_list, windows, params$support_threshold)
+
+        # newbreaks <- as.data.frame(do.call(rbind, lapply(breakpoints_consensus$supported_breaks, unlist)))
+        # newbreaks <- newbreaks[order(newbreaks$position), ]
+
+        # breaks_chr <- cbind(chrom=chr, position_to_breaks(newbreaks$position))
+        # segs <- segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
+        #     min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean)
+        return(list(
+            seg = segment_results$segs,
+            breaks_list = breaks_chr_list,  # Always include breaks_list
+            selected_win = segment_results$selected_win,
+            peak_win = segment_results$peak_win
+        ))
     } else {
-        segs <- segment.breaks(seqz.tab = seqz.data, breaks = breaks,
-            min.reads.baf = params$min.reads.baf, weighted.mean = params$weighted.mean)
+        breaks_chr <- breaks[breaks$chrom == chr, ]
+        segs <- segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
+            min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean)
         select_win <- 0
         compare_bins_segs <- data.frame(peak_win = 0, baf_fit = compare_bins(segs$start.pos,
             segs$end.pos, segs$Bf, seqz.b.win[[chr]]), ratio_fit = compare_bins(segs$start.pos,
             segs$end.pos, segs$depth.ratio, seqz.r.win[[chr]]),
             n_segs = nrow(segs))
 
-        list(segs = segs, selected_win = select_win, peak_win = compare_bins_segs)
+        # Create single-element breaks_list for user-provided breaks
+        breaks_chr_list <- list("user" = segs)
+        
+        return(list(
+            seg = segs,
+            breaks_list = breaks_chr_list,  # Include breaks_list even for user breaks
+            selected_win = select_win,
+            peak_win = compare_bins_segs
+        ))
     }
 }
 
