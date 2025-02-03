@@ -12,7 +12,12 @@ sequenza.fit <- function(sequenza.extract, female = TRUE, N.ratio.filter = 10,
     if (!is.list(sequenza.extract)) {
         stop("sequenza.extract must be a list object from sequenza.extract()")
     }
-
+    if (!is.null(sequenza.extract$gender)) {
+        female = sequenza.extract$gender == "female"
+    }
+    if (!is.null(sequenza.extract$XY)) {
+        XY = sequenza.extract$XY
+    }
     required_components <- c("mutations", "segments", "avg.depth.ratio")
     missing <- setdiff(required_components, names(sequenza.extract))
     if (length(missing) > 0) {

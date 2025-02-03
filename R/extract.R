@@ -6,9 +6,9 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     chromosome.list = NULL, breaks = NULL, min.mut.freq = 0.1,
     min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
     max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
-    assembly = "hg38", gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE,
-    min_times_gc = 5, gc_grid = 250, parallel = 1, weighted.mean = TRUE,
-    ...) {
+    assembly = "hg38", female = TRUE, XY = c(X = "X", Y = "Y"),
+    gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5,
+    gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...) {
     # Track start time and memory
     start_time <- Sys.time()
     start_mem <- gc(reset = TRUE)
@@ -19,10 +19,10 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
         overlap = overlap, slide_win = slide_win, peak_wins = peak_wins,
         support_threshold = support_threshold, normalization.method = normalization.method,
         ignore.normal = ignore.normal, verbose = verbose, chromosome.list = chromosome.list,
-        breaks = breaks, assembly = assembly, gc.stats = gc.stats,
-        do_raster = do_raster, smooth_gc = smooth_gc, min_times_gc = min_times_gc,
-        gc_grid = gc_grid, parallel = parallel, weighted.mean = weighted.mean,
-        ...)
+        breaks = breaks, assembly = assembly, female = female,
+        XY = XY, gc.stats = gc.stats, do_raster = do_raster,
+        smooth_gc = smooth_gc, min_times_gc = min_times_gc, gc_grid = gc_grid,
+        parallel = parallel, weighted.mean = weighted.mean, ...)
 
     # Validate input parameters
     extract_validate_params(params)
@@ -229,6 +229,45 @@ extract_process_gc_content <- function(gc.stats, normalization.method) {
     }, error = function(e) {
         stop("GC content processing failed: ", e$message)
     })
+}
+
+# check the XY parameter lists chromosomes included in the
+# input file and if the difference is the 'chr' prefix, add
+# a warning and modify the parameter. If the overal is no
+# chromosome, add a waring that no chromosome overal where
+# found
+
+check_XY <- function(xy, chr_vector) {
+    # Validate inputs
+    if (!is.vector(xy) || !is.vector(chr_vector)) {
+        stop("Both xy and chr_vector must be vectors")
+    }
+
+    # Find direct matches
+    in_input <- xy[xy %in% chr_vector]
+
+    # If no direct matches, check for chr prefix
+    # differences
+    if (length(in_input) == 0) {
+        # Check if chr_vector has 'chr' prefix while xy
+        # doesn't
+        chr_stripped <- gsub("^chr", "", chr_vector)
+        xy_without_chr <- gsub("chr", "", xy)
+        xy_with_chr <- paste0("chr", xy)
+
+        if (any(xy %in% chr_stripped)) {
+            warning("Adding 'chr' prefix to xy parameter to match input chromosomes")
+            xy <- xy_with_chr
+        } else if (any(xy_without_chr %in% chr_vector)) {
+            warning("Removing 'chr' prefix to xy parameter to match input chromosomes")
+            xy <- xy_without_chr
+        } else {
+            warning("No chromosome matches found between xy and input vector")
+        }
+    }
+
+    # Return modified xy parameter
+    return(xy)
 }
 
 process_depths <- function(seqz.data, gc_splines, avg_depths,
@@ -450,9 +489,9 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
     chromosome.list = NULL, breaks = NULL, min.mut.freq = 0.1,
     min.reads = 40, min.reads.normal = 10, min.reads.baf = 1,
     max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
-    assembly = "hg38", gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE,
-    min_times_gc = 5, gc_grid = 250, parallel = 1, weighted.mean = TRUE,
-    ...) {
+    assembly = "hg38", female = TRUE, XY = c(X = "X", Y = "Y"),
+    gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5,
+    gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...) {
     # Initialize GC stats if needed
     local_gc_stats <- if (is.null(gc.stats)) {
         gc.sample.stats(file, verbose = verbose, parallel = parallel,
@@ -474,12 +513,15 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
             chr.vect]
     }
 
+    # Check the XY parameter
+    XY_adjusted <- check_XY(XY, chr.vect)
+
     # Return complete parameter list
     list(window = window, overlap = overlap, slide_win = slide_win,
         peak_wins = peak_wins, support_threshold = support_threshold,
         normalization.method = normalization.method, ignore.normal = ignore.normal,
         verbose = verbose, assembly = assembly, chromosome.list = chromosome.list,
-        breaks = if (is.null(dim(breaks))) NULL else breaks,
+        female = female, XY = XY_adjusted, breaks = if (is.null(dim(breaks))) NULL else breaks,
         chr.vect = chr.vect, min.mut.freq = min.mut.freq, min.reads = min.reads,
         min.reads.normal = min.reads.normal, min.reads.baf = min.reads.baf,
         max.mut.types = max.mut.types, min.type.freq = min.type.freq,
@@ -549,9 +591,11 @@ finalize_extract_results <- function(containers, params, gc_stats,
             tumor = containers$windows.n_tumor)), mutations = containers$mutation.list,
         segments = containers$segments.list, win_peaks = containers$rank_peaks.list,
         chromosomes = params$chromosome.list, gc = gc_stats,
-        gc_norm = gc_norm, avg.depth.ratio = depths$avg_depth_ratio,
-        avg.depth.tumor = depths$avg_tum_depth, avg.depth.normal = depths$avg_nor_depth,
-        mutation_stats = mutation_stats, all_segments = containers$all_segments)
+        ignore.normal = params$ignore.normal, gc_norm = gc_norm,
+        avg.depth.ratio = depths$avg_depth_ratio, avg.depth.tumor = depths$avg_tum_depth,
+        avg.depth.normal = depths$avg_nor_depth, mutation_stats = mutation_stats,
+        all_segments = containers$all_segments, gender = if (params$female) "female" else "male",
+        XY = params$XY)
 }
 
 # Add error handling wrapper

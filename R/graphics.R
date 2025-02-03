@@ -346,7 +346,8 @@ genome.view <- function(seg.cn, info.type = "AB", ...) {
 }
 
 plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
-    CNt.max = 7, main = "", mirror.BAF = TRUE, ...) {
+    CNt.max = 7, main = "", mirror.BAF = TRUE, female = TRUE,
+    XY = NULL, ignore.normal = FALSE, ...) {
     max.end <- sapply(sequenza.extract$ratio, FUN = function(x) {
         max(x$end, na.rm = TRUE)
     })
@@ -371,10 +372,46 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
     }
 
     ratio.new <- new.coords(sequenza.extract$ratio, max.end)
+    names(ratio.new) <- names(sequenza.extract$ratio)
     BAF.new <- new.coords(sequenza.extract$BAF, max.end)
+    names(BAF.new) <- names(sequenza.extract$BAF)
+    segs.new <- new.coords.segs(sequenza.extract$segments, max.end)
+    names(segs.new) <- names(sequenza.extract$segments)
+    if (!is.null(sequenza.extract$gender)) {
+        female = sequenza.extract$gender == "female"
+    }
+    if (!is.null(sequenza.extract$XY)) {
+        XY = sequenza.extract$XY
+    }
+    if (!is.null(sequenza.extract$ignore.normal)) {
+        ignore.normal = sequenza.extract$ignore.normal
+    }
 
-    segs.new <- do.call(rbind, new.coords.segs(sequenza.extract$segments,
-        max.end))
+    # if femae is FALSE, and XY is specified, divide by
+    # half the ratio and the segment values and blank them
+    # in the XY chromosomes
+    if (!is.null(XY) & female == FALSE) {
+        used_xy <- XY[XY %in% sequenza.extract$chromosomes]
+        if (length(used_xy) > 0) {
+            for (XY_i in used_xy) {
+                # divide by half the ratio and the segment
+                # values only if ignore.normal is FALSE
+                if (!ignore.normal) {
+                  ratio.new[[XY_i]]$mean <- ratio.new[[XY_i]]$mean/2
+                  ratio.new[[XY_i]]$q0 <- ratio.new[[XY_i]]$q0/2
+                  ratio.new[[XY_i]]$q1 <- ratio.new[[XY_i]]$q1/2
+                  segs.new[[XY_i]]$depth.ratio <- segs.new[[XY_i]]$depth.ratio/2
+                }
+                # blank the BAF values
+                BAF.new[[XY_i]]$mean <- NA
+                BAF.new[[XY_i]]$q0 <- NA
+                BAF.new[[XY_i]]$q1 <- NA
+                segs.new[[XY_i]]$Bf <- NA
+            }
+        }
+
+    }
+    segs.new <- do.call(rbind, segs.new)
     avg.depth.ratio <- 1
 
     par(mar = c(1, 4, 0, 3), oma = c(5, 0, 4, 0), mfcol = c(2,

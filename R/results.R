@@ -4,6 +4,16 @@ sequenza.results <- function(sequenza.extract, cp.table = NULL,
     sample.id, out.dir = getwd(), cellularity = NULL, ploidy = NULL,
     female = TRUE, CNt.max = 20, ratio.priority = FALSE, XY = c(X = "X",
         Y = "Y"), chromosome.list = 1:24) {
+    # override female and XY arguments if present in
+    # sequenza.extract
+
+    if (!is.null(sequenza.extract$gender)) {
+        female = sequenza.extract$gender == "female"
+    }
+    if (!is.null(sequenza.extract$XY)) {
+        XY = sequenza.extract$XY
+    }
+
     # Enhanced input validation
     results_validate_input(sequenza.extract, sample.id, out.dir)
 
