@@ -397,7 +397,7 @@ extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
 
         # Add debug message
         if (params$verbose) {
-            message("\nWindows calculation results for chr ",
+            message("\nWindows calculation results for chromosome ",
                 chr, ":")
             message("  ratio entries: ", nrow(windows$ratio[[1]]))
             message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
@@ -555,9 +555,10 @@ finalize_extract_results <- function(containers, params, gc_stats,
 }
 
 # Add error handling wrapper
-safely_compare_bins <- function(start.pos, end.pos, values, windows) {
+safely_compare_bins <- function(start.pos, end.pos, values, windows,
+    sd.values) {
     tryCatch({
-        compare_bins(start.pos, end.pos, values, windows)
+        compare_bins(start.pos, end.pos, values, windows, sd.values)
     }, error = function(e) {
         message("Warning: Bin comparison failed: ", e$message)
         return(0)  # Return neutral score on failure
@@ -586,17 +587,17 @@ rank_segments <- function(breaks_list, windows, params) {
     compare_bins_list <- if (params$parallel > 1) {
         pbapply::pblapply(breaks_list, function(x) {
             baf_vs_bins <- safely_compare_bins(x$start.pos, x$end.pos,
-                x$Bf, baf_win)
+                x$Bf, baf_win, x$sd.BAF)
             ratio_vs_bins <- safely_compare_bins(x$start.pos,
-                x$end.pos, x$depth.ratio, ratio_win)
+                x$end.pos, x$depth.ratio, ratio_win, x$sd.ratio)
             c(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
         }, cl = params$parallel)
     } else {
         lapply(breaks_list, function(x) {
             baf_vs_bins <- safely_compare_bins(x$start.pos, x$end.pos,
-                x$Bf, baf_win)
+                x$Bf, baf_win, x$sd.BAF)
             ratio_vs_bins <- safely_compare_bins(x$start.pos,
-                x$end.pos, x$depth.ratio, ratio_win)
+                x$end.pos, x$depth.ratio, ratio_win, x$sd.ratio)
             c(baf_fit = baf_vs_bins, ratio_fit = ratio_vs_bins)
         })
     }
@@ -606,22 +607,33 @@ rank_segments <- function(breaks_list, windows, params) {
         do.call(rbind, compare_bins_list), n_segs = vapply(breaks_list,
             nrow, numeric(1)))
 
+    # Subsets the compare_bins_segs with both metrics above
+    # 0.75
+    compare_bins_segs_high <- compare_bins_segs[apply(compare_bins_segs[,
+        c("baf_fit", "ratio_fit")], 1, function(x) {
+        all(x > 0.75)
+    }), ]
+    # Fallback to all metrics if no high-quality fits
+    if (nrow(compare_bins_segs_high) == 0) {
+        compare_bins_segs_high <- compare_bins_segs
+    }
+
     # Calculate ranks with weights for different metrics
-    ranks_fits <- cbind(baf = rank(-compare_bins_segs$baf_fit,
-        ties.method = "max"), ratio = rank(-compare_bins_segs$ratio_fit,
-        ties.method = "max"), n_segs = rank(compare_bins_segs$n_segs,
+    ranks_fits <- cbind(baf = rank(-compare_bins_segs_high$baf_fit,
+        ties.method = "max"), ratio = rank(-compare_bins_segs_high$ratio_fit,
+        ties.method = "max"), n_segs = rank(compare_bins_segs_high$n_segs,
         ties.method = "min"))
 
     # Select best fit considering all metrics
     total_ranks <- rowSums(ranks_fits)
     best_fits <- which(total_ranks == min(total_ranks))
-    select_win <- max(compare_bins_segs$peak_win[best_fits])
+    select_win <- max(compare_bins_segs_high$peak_win[best_fits])
 
     # Debug information if verbose
     if (params$verbose) {
         message("Segment ranking results:")
         message("Selected window size: ", select_win)
-        message("Number of segments: ", compare_bins_segs$n_segs[compare_bins_segs$peak_win ==
+        message("Number of segments: ", compare_bins_segs_high$n_segs[compare_bins_segs_high$peak_win ==
             select_win])
     }
 
@@ -704,8 +716,9 @@ process_segments <- function(seqz.data, breaks, chr, windows,
             min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean)
         select_win <- 0
         compare_bins_segs <- data.frame(peak_win = 0, baf_fit = compare_bins(segs$start.pos,
-            segs$end.pos, segs$Bf, seqz.b.win[[chr]]), ratio_fit = compare_bins(segs$start.pos,
-            segs$end.pos, segs$depth.ratio, seqz.r.win[[chr]]),
+            segs$end.pos, segs$Bf, seqz.b.win[[chr]], segs$sd.BAF),
+            ratio_fit = compare_bins(segs$start.pos, segs$end.pos,
+                segs$depth.ratio, seqz.r.win[[chr]], segs$sd.ratio),
             n_segs = nrow(segs))
 
         # Create single-element breaks_list for

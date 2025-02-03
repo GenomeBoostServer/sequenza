@@ -308,19 +308,27 @@ calculate_unweighted_segments <- function(seqz_data, baf_data,
         N.ratio = seg.i.s.r, sd.ratio = seg.i.r.sd, stringsAsFactors = FALSE)
 }
 
-compare_bins <- function(start, end, value, bins) {
-    segs_vals <- data.frame(start, end, value)
+compare_bins <- function(start, end, value, bins, sd.value) {
+    segs_vals <- data.frame(start, end, value, sd.value)
     get_segs <- function(start, end, segs) {
         which(segs$start < end & segs$end > start)
     }
     is_similar <- apply(bins, 1, FUN = function(x, segs) {
         start <- x[1]
         end <- x[2]
+        bin_mean <- x[3]
         q0 <- x[4]
         q1 <- x[5]
         indexes <- get_segs(start, end, segs)
         segs_values <- segs[indexes, "value"]
-        all(segs_values >= q0 & segs_values <= q1)
+        segs_sd <- segs[indexes, "sd.value"]
+        # Compute the number of sd away from the mean
+        n_sd_diff <- na.exclude(abs(bin_mean - segs_values)/segs_sd,
+            na.rm = TRUE)
+        # all(segs_values >= q0 & segs_values <= q1) Check
+        # if the bin mean is within the segment mean
+        all(n_sd_diff < 1/2)
+
     }, segs = segs_vals)
     sum(is_similar, na.rm = TRUE)/length(na.exclude(is_similar))
 }
