@@ -102,8 +102,8 @@ plot_window_with_axis <- function(seqz.window, max_coord, ylim = c(0,
 
 # Common data validation
 validate_data_frame <- function(df, required_cols, context = "") {
-    # TODO: Add support for type checking of columns
-    # TODO: Add option for custom validation functions per column
+    # TODO: Add support for type checking of columns TODO:
+    # Add option for custom validation functions per column
     if (!is.data.frame(df) || nrow(df) == 0) {
         return(NULL)
     }
@@ -116,22 +116,32 @@ validate_data_frame <- function(df, required_cols, context = "") {
     return(df)
 }
 
-# Enhanced error handling wrapper with backwards compatibility
-safely_execute <- function(expr, default = NULL, context = "", error_message = NULL) {
-    # FIXME: Consider adding support for warning handling and progress reporting
-    tryCatch(
-        expr,
-        error = function(e) {
-            # Use error_message if provided, otherwise fall back to context
-            msg <- if (!is.null(error_message)) {
-                sprintf("Warning: %s: %s", error_message, e$message)
-            } else if (context != "") {
-                sprintf("Warning: %s failed: %s", context, e$message)
-            } else {
-                sprintf("Warning: %s", e$message)
-            }
-            message(msg)
-            default
+# Enhanced error handling wrapper with backwards
+# compatibility
+safely_execute <- function(expr, default = NULL, context = "",
+    error_message = NULL) {
+    # FIXME: Consider adding support for warning handling
+    # and progress reporting
+    tryCatch(expr, error = function(e) {
+        # Use error_message if provided, otherwise fall
+        # back to context
+        msg <- if (!is.null(error_message)) {
+            sprintf("Warning: %s: %s", error_message, e$message)
+        } else if (context != "") {
+            sprintf("Warning: %s failed: %s", context, e$message)
+        } else {
+            sprintf("Warning: %s", e$message)
         }
-    )
+        message(msg)
+        default
+    })
+}
+
+# convert a vector of position into breakpoints, with
+# column start.pos and end.pos
+
+position_to_breaks <- function(positions) {
+    breaks <- data.frame(start.pos = positions[-length(positions)],
+        end.pos = positions[-1] - 1)
+    breaks
 }

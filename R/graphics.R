@@ -346,16 +346,16 @@ genome.view <- function(seg.cn, info.type = "AB", ...) {
 }
 
 plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
-    CNt.max = 7, main = "", mirror.BAF = TRUE, female = TRUE,
-    XY = NULL, ignore.normal = FALSE, ...) {
+    CNt.max = 7, main = "", mirror.BAF = TRUE, highlight_regions = NULL,
+    female = TRUE, XY = NULL, ignore.normal = FALSE, ...) {
     max.end <- sapply(sequenza.extract$ratio, FUN = function(x) {
         max(x$end, na.rm = TRUE)
     })
     max.end <- c(0, cumsum(as.numeric(max.end)))
     chrs <- names(sequenza.extract$ratio)
-    coords.names <- (max.end + c(diff(max.end)/2, 0))[1:length(chrs)]
+    coords.names <- (max.end + c(diff(max.end)/2, 0))[seq_len(length(chrs))]
     new.coords <- function(win.list, max.end) {
-        lapply(1:length(win.list), FUN = function(x) {
+        lapply(seq_len(length(win.list)), FUN = function(x) {
             y <- win.list[[x]]
             y$start <- y$start + max.end[x]
             y$end <- y$end + max.end[x]
@@ -363,7 +363,7 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
         })
     }
     new.coords.segs <- function(segs, max.end) {
-        lapply(1:length(segs), FUN = function(x) {
+        lapply(seq_len(length(segs)), FUN = function(x) {
             y <- segs[[x]]
             y$start.pos <- y$start.pos + max.end[x]
             y$end.pos <- y$end.pos + max.end[x]
@@ -377,6 +377,7 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
     names(BAF.new) <- names(sequenza.extract$BAF)
     segs.new <- new.coords.segs(sequenza.extract$segments, max.end)
     names(segs.new) <- names(sequenza.extract$segments)
+    
     if (!is.null(sequenza.extract$gender)) {
         female = sequenza.extract$gender == "female"
     }
@@ -422,9 +423,9 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
             x[, 3:5] <- 1 - x[, 3:5]
             x
         })
-        plot(x = c(min(max.end), max(max.end)), y = c(0, 1),
-            main = main, xlab = NA, ylab = "Allele frequency",
-            type = "n", las = 1, xaxs = "i", yaxs = "i", xaxt = "n")
+        plot(x = c(min(max.end), max(max.end)), y = c(0, 1), xlab = NA,
+            ylab = "Allele frequency", type = "n", las = 1, xaxs = "i",
+            yaxs = "i", xaxt = "n")
         plotWindows(seqz.window = do.call(rbind, AAF.new), q.bg = "lightblue",
             m.col = "black", add = T)
         segments(x0 = segs.new$start.pos, x1 = segs.new$end.pos,
@@ -432,7 +433,7 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
             lwd = 2, lend = 1)
     } else {
         plot(x = c(min(max.end), max(max.end)), y = c(0, 0.5),
-            main = main, xlab = NA, ylab = "B allele frequency",
+            xlab = NA, ylab = "B allele frequency",
             type = "n", las = 1, xaxs = "i", yaxs = "i", xaxt = "n")
     }
     plotWindows(seqz.window = do.call(rbind, BAF.new), q.bg = "lightblue",
@@ -463,6 +464,9 @@ plotRawGenome <- function(sequenza.extract, cellularity, ploidy,
             par("cex"))
     }
     abline(v = max.end, lty = 1)
+    if (!is.null(main)) {
+        mtext(main, outer = TRUE, line = 2, cex = 1.2)
+    }
     axis(labels = chrs, at = coords.names, side = 1, cex.axis = 1)
 }
 
