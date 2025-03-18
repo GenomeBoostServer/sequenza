@@ -11,8 +11,6 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...) {
     # Track start time and memory
     start_time <- Sys.time()
-    start_mem <- gc(reset = TRUE)
-    start_mem_used <- sum(start_mem[, 2])
 
     # Initialize parameters with all arguments
     params <- extract_initialize_parameters(file = file, window = window,
@@ -760,9 +758,9 @@ process_segments <- function(seqz.data, breaks, chr, windows,
             min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean)
         select_win <- 0
         compare_bins_segs <- data.frame(peak_win = 0, baf_fit = compare_bins(segs$start.pos,
-            segs$end.pos, segs$Bf, seqz.b.win[[chr]], segs$sd.BAF),
+            segs$end.pos, segs$Bf, windows$baf[[1]], segs$sd.BAF),
             ratio_fit = compare_bins(segs$start.pos, segs$end.pos,
-                segs$depth.ratio, seqz.r.win[[chr]], segs$sd.ratio),
+                windows$ratio[[1]], segs$sd.ratio),
             n_segs = nrow(segs))
 
         # Create single-element breaks_list for
