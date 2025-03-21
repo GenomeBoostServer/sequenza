@@ -241,6 +241,8 @@ check_XY <- function(xy, chr_vector) {
         stop("Both xy and chr_vector must be vectors")
     }
 
+    xy_names <- names(xy)
+
     # Find direct matches
     in_input <- xy[xy %in% chr_vector]
 
@@ -263,6 +265,7 @@ check_XY <- function(xy, chr_vector) {
             warning("No chromosome matches found between xy and input vector")
         }
     }
+    names(xy) <- xy_names
 
     # Return modified xy parameter
     return(xy)
