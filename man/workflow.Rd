@@ -20,7 +20,7 @@
     min.reads.baf = 1, max.mut.types = 1, min.type.freq = 0.9,
     min.fw.freq = 0, assembly = "hg38", gc.stats = NULL,
     do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5,
-    gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...)
+    gc_grid = 250, parallel = 1, weighted.mean = TRUE, cytoband_file = NULL, ...)
 
   sequenza.fit(sequenza.extract, female = TRUE, N.ratio.filter = 10,
     N.BAF.filter = 1, segment.filter = 3e6, mufreq.threshold = 0.1,
@@ -61,6 +61,10 @@
   \item{gc_grid}{grid size for GC binning (default: 250).}
   \item{parallel}{Number of parallel processes to use (pbapply backend).}
   \item{weighted.mean}{Logical; whether to use read depth as weights for depth ratio and BAF calculations.}
+  \item{cytoband_file}{optional path to a local UCSC cytoBand file
+    (e.g., \code{hg38_cytoBand.txt.gz}) for offline use. When provided, cytoband data is read from
+    this file instead of being downloaded from UCSC (hgdownload.cse.ucsc.edu). The file must follow
+    UCSC \code{cytoBand} format. Default \code{NULL} preserves the original download behavior.}
   \item{sequenza.extract}{a list of objects as output from the \code{sequenza.extract} function.}
   \item{method}{method to use to fit the data; possible values are \code{baf} to use \code{\link{baf.model.fit}} or \code{mufreq} to use the \code{\link{mufreq.model.fit}} function to fit the data.}
   \item{cp.table}{a list of objects as output from the \code{sequenza.fit} function.}

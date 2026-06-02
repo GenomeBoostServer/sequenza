@@ -121,6 +121,74 @@ read.seqz.tbi <- function(file, chr_name, col_names) {
     setNames(as_tibble(res), col_names)
 }
 
+# Read specific columns from a seqz file (supports .gz)
+# Returns a data.frame with only the requested columns
+read.seqz.columns <- function(file, columns,
+    col_names = c("chromosome", "position", "base.ref", "depth.normal",
+        "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
+        "GC.percent", "good.reads", "AB.normal", "AB.tumor", "tumor.strand"),
+    col_types_full = "ciciidddcddccc") {
+
+    if (!file.exists(file))
+        stop("File not found: ", file)
+
+    # Build col_types string: use '_' to skip unwanted columns
+    col_indices <- match(columns, col_names)
+    if (any(is.na(col_indices)))
+        stop("Unknown columns: ", paste(columns[is.na(col_indices)], collapse = ", "))
+
+    ct_chars <- strsplit(col_types_full, "")[[1]]
+    ct_select <- rep("_", length(ct_chars))
+    ct_select[col_indices] <- ct_chars[col_indices]
+    col_types_str <- paste(ct_select, collapse = "")
+
+    readr::read_tsv(file, col_names = col_names, col_types = col_types_str,
+        skip = 1, progress = FALSE, show_col_types = FALSE)
+}
+
+# Read specific columns with row-level filtering
+# filter_fn receives a data.frame chunk and returns a logical vector
+read.seqz.filtered <- function(file, columns, filter_fn,
+    col_names = c("chromosome", "position", "base.ref", "depth.normal",
+        "depth.tumor", "depth.ratio", "Af", "Bf", "zygosity.normal",
+        "GC.percent", "good.reads", "AB.normal", "AB.tumor", "tumor.strand"),
+    col_types_full = "ciciidddcddccc", chunk_size = 500000L) {
+
+    if (!file.exists(file))
+        stop("File not found: ", file)
+
+    # Build col_types with skip for unwanted columns
+    col_indices <- match(columns, col_names)
+    if (any(is.na(col_indices)))
+        stop("Unknown columns: ", paste(columns[is.na(col_indices)], collapse = ", "))
+
+    ct_chars <- strsplit(col_types_full, "")[[1]]
+    ct_select <- rep("_", length(ct_chars))
+    ct_select[col_indices] <- ct_chars[col_indices]
+    col_types_str <- paste(ct_select, collapse = "")
+
+    # Read in chunks and filter
+    results <- list()
+    callback <- readr::SideEffectChunkCallback$new(function(chunk, pos) {
+        filtered <- chunk[which(filter_fn(chunk)), , drop = FALSE]
+        if (nrow(filtered) > 0) {
+            results[[length(results) + 1L]] <<- filtered
+        }
+    })
+
+    readr::read_tsv_chunked(file, callback, col_names = col_names,
+        col_types = col_types_str, skip = 1, chunk_size = chunk_size,
+        progress = FALSE, show_col_types = FALSE)
+
+    if (length(results) == 0) {
+        # Return empty data.frame with correct columns
+        return(readr::read_tsv(file, col_names = col_names,
+            col_types = col_types_str, skip = 1, n_max = 0,
+            progress = FALSE, show_col_types = FALSE))
+    }
+    dplyr::bind_rows(results)
+}
+
 # Helper function for coordinate splitting
 split_chr_coord <- function(chr_name) {
     if (is.null(chr_name) || !grepl(":", chr_name)) {

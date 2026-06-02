@@ -110,24 +110,23 @@ extract_breaks <- function(data, data_het, breaks, slide_win,
 }
 
 extract_breaks_tracks <- function(track, breaks, slide_win, peak_win,
-    assembly, chromosome) {
+    assembly, chromosome, cytoband_file = NULL) {
     if (is.null(breaks)) {
-        # Try to get assembly arms from UCSC
+        # Resolve source outside tryCatch so local-file misconfiguration errors surface immediately
+        # instead of being swallowed by the fallback branch below.
+        cyto_src <- resolve_cytoband_source(cytoband_file, assembly)
+
         arms <- tryCatch({
-            golden_path <- paste("http://hgdownload.cse.ucsc.edu",
-                "goldenPath", assembly, "database", "cytoBand.txt.gz",
-                sep = "/")
-            get_assembly(url = golden_path, prefix = "chr")
+            get_assembly(url = cyto_src, prefix = "chr")
         }, error = function(e) {
-            # Fallback: Create a simple arm structure for
-            # the whole chromosome
-            warning("Could not fetch chromosome arms from UCSC. Using fallback single-arm structure.")
+            # Fallback: Create a simple arm structure for the whole chromosome
+            # (covers remote fetch failures or parse errors in the resolved source).
+            warning("Could not fetch chromosome arms. Using fallback single-arm structure.")
             data.frame(chromosome = chromosome, start = min(track$x,
                 na.rm = TRUE), end = max(track$x, na.rm = TRUE),
                 arm = "q", stringsAsFactors = FALSE)
         })
 
-        arms <- get_assembly(url = golden_path, prefix = "chr")
         chr_arm <- gsub(x = chromosome, pattern = "chr", replacement = "")
         chr_arm <- paste0("chr", chr_arm)
 

@@ -1,7 +1,21 @@
-select_chromosomes_with_centromere <- function(assembly, all_sequences) {
-    golden_path <- paste("http://hgdownload.cse.ucsc.edu", "goldenPath",
-        assembly, "database", "cytoBand.txt.gz", sep = "/")
-    arms <- get_assembly(golden_path, prefix = "chr")
+# Resolve the source (local file path or UCSC URL) for a cytoBand-style file.
+# Validates local file existence eagerly so misconfigured paths fail fast with a specific error
+# rather than being swallowed by downstream tryCatch.
+resolve_cytoband_source <- function(cytoband_file, assembly,
+    remote_filename = "cytoBand.txt.gz") {
+    if (!is.null(cytoband_file)) {
+        if (!file.exists(cytoband_file)) {
+            stop(sprintf("Local cytoBand file not found: %s", cytoband_file))
+        }
+        return(cytoband_file)
+    }
+    paste("http://hgdownload.cse.ucsc.edu", "goldenPath", assembly, "database", remote_filename,
+          sep = "/")
+}
+
+select_chromosomes_with_centromere <- function(assembly, all_sequences, cytoband_file = NULL) {
+    cyto_src <- resolve_cytoband_source(cytoband_file, assembly)
+    arms <- get_assembly(cyto_src, prefix = "chr")
     chromosomes <- unique(arms[arms$arm != "n", ]$chromosome)
     select_sequences <- all_sequences %in% chromosomes
     if (sum(select_sequences) == 0) {

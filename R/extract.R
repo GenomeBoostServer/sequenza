@@ -8,7 +8,7 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
     max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
     assembly = "hg38", female = TRUE, XY = c(X = "X", Y = "Y"),
     gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5,
-    gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...) {
+    gc_grid = 250, parallel = 1, weighted.mean = TRUE, cytoband_file = NULL, ...) {
     # Track start time and memory
     start_time <- Sys.time()
 
@@ -20,22 +20,57 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
         breaks = breaks, assembly = assembly, female = female,
         XY = XY, gc.stats = gc.stats, do_raster = do_raster,
         smooth_gc = smooth_gc, min_times_gc = min_times_gc, gc_grid = gc_grid,
-        parallel = parallel, weighted.mean = weighted.mean, ...)
+        parallel = parallel, weighted.mean = weighted.mean, cytoband_file = cytoband_file, ...)
 
     # Validate input parameters
     extract_validate_params(params)
 
     tryCatch({
         # Process GC content
-        gc_data <- extract_process_gc_content(params$gc.stats,
-            params$normalization.method)
+        gc_data <- extract_process_gc_content(params$gc.stats, params$normalization.method)
 
-        gc_splines <- list(normal = smooth.spline(data.frame(gc = as.numeric(names(gc_data$normal_vect)),
-            depth = gc_data$normal_vect)), tumor = smooth.spline(data.frame(gc = as.numeric(names(gc_data$tumor_vect)),
-            depth = gc_data$tumor_vect)))
+        gc_splines <- list(
+            normal = smooth.spline(data.frame(
+                gc = as.numeric(names(gc_data$normal_vect)),
+                depth = gc_data$normal_vect)),
+            tumor = smooth.spline(data.frame(
+                gc = as.numeric(names(gc_data$tumor_vect)),
+                depth = gc_data$tumor_vect)))
 
         # Initialize containers
         containers <- initialize_extract_containers(params$chromosome.list)
+
+        # Build per-chromosome file map for selective-read mode
+        # Look for chr-specific seqz.gz files alongside the merged file
+        chr_file_map <- NULL
+        if (!dir.exists(file)) {
+            file_dir <- dirname(file)
+            # Derive sample id from the merged file name, then match
+            # "<sample>_<chrom>.small.seqz.gz" for both hg38 (chr1, chrX)
+            # and hg19/b37 (1, X, MT) naming. Anchoring on the sample id
+            # also prevents matching the merged file itself.
+            sample_id <- sub("\\.(small\\.)?seqz\\.gz$", "", basename(file))
+            sample_re <- gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", sample_id)
+            seqz_files <- sort(list.files(file_dir,
+                pattern = paste0("^", sample_re, "_[^.]+\\.small\\.seqz\\.gz$"),
+                full.names = TRUE))
+            if (length(seqz_files) > 0) {
+                chr_file_map <- setNames(seqz_files,
+                    sub(paste0("^", sample_re, "_(.+)\\.small\\.seqz\\.gz$"), "\\1",
+                        basename(seqz_files)))
+                if (params$verbose)
+                    message("Selective-read mode: found ", length(seqz_files),
+                        " per-chromosome seqz files")
+            }
+        }
+
+        # Resolve file path for a given chromosome
+        get_chr_file <- function(chr) {
+            if (!is.null(chr_file_map) && chr %in% names(chr_file_map))
+                chr_file_map[[chr]]
+            else
+                file
+        }
 
         # Process each chromosome with improved parallel
         # handling
@@ -48,14 +83,11 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
                 on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl),
                   silent = TRUE))
 
-                # Export necessary objects
-                parallel::clusterExport(cl, c("file", "params",
-                  "gc_splines"), envir = environment())
-
                 results <- pbapply::pblapply(seq_along(params$chromosome.list),
                   function(idx) {
                     chr <- params$chromosome.list[idx]
-                    extract_process_chromosome(chr, file, params$gc.stats,
+                    chr_f <- get_chr_file(chr)
+                    extract_process_chromosome(chr, chr_f, params$gc.stats,
                       gc_splines, NULL, params)
                   }, cl = cl)
 
@@ -82,15 +114,14 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
             })
         } else {
             for (chr in params$chromosome.list) {
-                containers <- extract_process_chromosome(chr,
-                  file, params$gc.stats, gc_splines, containers,
-                  params)
+                chr_f <- get_chr_file(chr)
+                containers <- extract_process_chromosome(chr, chr_f,
+                    params$gc.stats, gc_splines, containers, params)
             }
         }
 
         # Finalize and return results
-        final_results <- finalize_extract_results(containers,
-            params, params$gc.stats, gc_data)
+        final_results <- finalize_extract_results(containers, params, params$gc.stats, gc_data)
         gc()  # Force garbage collection
 
         # Print performance summary if verbose
@@ -101,85 +132,67 @@ sequenza.extract <- function(file, window = 1e+06, overlap = 1,
 
             # Track memory usage of all processes
             if (params$parallel > 1) {
-                # Get worker processes from parallel
-                # cluster instead of system commands
-                n_workers <- if (!is.null(cl)) {
-                  length(cl)
-                } else {
-                  0
-                }
+                # Get worker processes from parallel cluster
+                n_workers <- if (!is.null(cl)) length(cl) else 0
 
                 total_mem <- end_mem_used  # Start with main process memory
 
                 if (n_workers > 0) {
-                  # Get memory usage from cluster if
-                  # available
                   worker_mems <- tryCatch({
                     if (.Platform$OS.type == "unix") {
                       # Use ps for Unix-like systems
-                      pids <- unlist(parallel::clusterCall(cl,
-                        Sys.getpid))
-                      mem_cmd <- sprintf("ps -o rss= %s", paste(pids,
-                        collapse = " "))
-                      as.numeric(system(mem_cmd, intern = TRUE))/1024
+                      pids <- unlist(parallel::clusterCall(cl, Sys.getpid))
+                      mem_cmd <- sprintf("ps -p %s -o rss=", paste(pids, collapse = ","))
+                      as.numeric(system(mem_cmd, intern = TRUE)) / 1024
                     } else {
-                      # For Windows, just use main process
-                      # memory
-                      rep(end_mem_used/n_workers, n_workers)
+                      # For Windows, just use main process memory
+                      rep(end_mem_used / n_workers, n_workers)
                     }
                   }, error = function(e) {
                     message("Warning: Could not get worker memory usage")
                     rep(0, n_workers)
                   })
 
-                  total_mem <- end_mem_used + sum(worker_mems,
-                    na.rm = TRUE)
+                  if (any(is.na(worker_mems)))
+                      warning(sum(is.na(worker_mems)), " worker memory values are NA")
+                  total_mem <- end_mem_used + sum(worker_mems, na.rm = TRUE)
                 }
 
-                message(sprintf("Peak memory usage (main process): %.2f GB",
-                  max(0, end_mem_used/1024)))
-                message(sprintf("Peak memory usage (all processes): %.2f GB",
-                  max(0, total_mem/1024)))
-                message(sprintf("Number of worker processes: %d",
-                  n_workers))
+                message(sprintf("Memory usage (main, R gc peak): %.2f GB",
+                    max(0, end_mem_used / 1024)))
+                message(sprintf("Memory usage (all, main gc + worker RSS): %.2f GB",
+                    max(0, total_mem / 1024)))
+                message(sprintf("Number of worker processes: %d", n_workers))
             } else {
                 total_mem <- end_mem_used
-                message(sprintf("Peak memory usage: %.2f GB",
-                  max(0, total_mem/1024)))
+                message(sprintf("Peak memory usage: %.2f GB", max(0, total_mem / 1024)))
             }
 
             # Calculate total mutations and covered bases
-            total_mutations <- sum(sapply(final_results$mutations,
-                nrow))
-            total_bases <- sum(sapply(final_results$segments,
-                function(segs) {
-                  sum(segs$end.pos - segs$start.pos + 1)
-                }))
-            total_mb <- total_bases/1e+06
+            total_mutations <- sum(sapply(final_results$mutations, nrow))
+            total_bases <- sum(sapply(final_results$segments, function(segs) {
+                sum(segs$end.pos - segs$start.pos + 1)
+            }))
+            total_mb <- total_bases / 1e+06
 
             message("\nPerformance Summary:")
-            message(sprintf("Total time: %.2f minutes", as.numeric(difftime(end_time,
-                start_time, units = "mins"))))
+            message(sprintf("Total time: %.2f minutes",
+                as.numeric(difftime(end_time, start_time, units = "mins"))))
             if (params$parallel > 1) {
-                message(sprintf("Peak memory usage (main process): %.2f GB",
-                  max(0, (end_mem_used)/1024)))
-                message(sprintf("Peak memory usage (all processes): %.2f GB",
-                  max(0, total_mem/1024)))
-                message(sprintf("Number of worker processes: %d",
-                  n_workers))
+                message(sprintf("Memory usage (main, R gc peak): %.2f GB",
+                    max(0, end_mem_used / 1024)))
+                message(sprintf("Memory usage (all, main gc + worker RSS): %.2f GB",
+                    max(0, total_mem / 1024)))
+                message(sprintf("Number of worker processes: %d", n_workers))
             } else {
-                message(sprintf("Peak memory usage: %.2f GB",
-                  max(0, total_mem/1024)))
+                message(sprintf("Peak memory usage: %.2f GB", max(0, total_mem / 1024)))
             }
-            message(sprintf("Number of chromosomes processed: %d",
-                length(params$chromosome.list)))
+            message(sprintf("Number of chromosomes processed: %d", length(params$chromosome.list)))
             message(sprintf("Total segments identified: %d",
                 sum(sapply(final_results$segments, nrow))))
             message(sprintf("Total mutations detected: %d", total_mutations))
-            message(sprintf("Total megabases analyzed: %.1f",
-                total_mb))
-            message(sprintf("Mutation rate: %.2f mutations/Mb",
-                total_mutations/total_mb))
+            message(sprintf("Total megabases analyzed: %.1f", total_mb))
+            message(sprintf("Mutation rate: %.2f mutations/Mb", total_mutations / total_mb))
         }
 
         return(final_results)
@@ -214,15 +227,19 @@ extract_process_gc_content <- function(gc.stats, normalization.method) {
 
     tryCatch({
         if (normalization.method == "mean") {
-            list(normal_vect = mean_gc(gc.stats$normal), tumor_vect = mean_gc(gc.stats$tumor),
+            list(normal_vect = mean_gc(gc.stats$normal),
+                tumor_vect = mean_gc(gc.stats$tumor),
                 tum_depth = weighted.mean(x = gc.stats$tumor$depth,
-                  w = colSums(gc.stats$tumor$n)), nor_depth = weighted.mean(x = gc.stats$normal$depth,
-                  w = colSums(gc.stats$normal$n)))
+                    w = colSums(gc.stats$tumor$n)),
+                nor_depth = weighted.mean(x = gc.stats$normal$depth,
+                    w = colSums(gc.stats$normal$n)))
         } else {
-            list(normal_vect = median_gc(gc.stats$normal), tumor_vect = median_gc(gc.stats$tumor),
+            list(normal_vect = median_gc(gc.stats$normal),
+                tumor_vect = median_gc(gc.stats$tumor),
                 tum_depth = weighted.median(x = gc.stats$tumor$depth,
-                  w = colSums(gc.stats$tumor$n)), nor_depth = weighted.median(x = gc.stats$normal$depth,
-                  w = colSums(gc.stats$normal$n)))
+                    w = colSums(gc.stats$tumor$n)),
+                nor_depth = weighted.median(x = gc.stats$normal$depth,
+                    w = colSums(gc.stats$normal$n)))
         }
     }, error = function(e) {
         stop("GC content processing failed: ", e$message)
@@ -320,22 +337,20 @@ calculate_windows <- function(seqz.data, depths, window, overlap,
             names(seqz.data)), collapse = ", "))
     }
 
-    # Calculate all window values at once
-    list(ratio = windowValues(x = seqz.data$adjusted.ratio, positions = seqz.data$position,
-        chromosomes = seqz.data$chromosome, window = window,
-        overlap = overlap, weight = seqz.data$depth.normal),
-        normal = windowValues(x = seqz.data$depth.normal/avg_depths$normal,
-            positions = seqz.data$position, chromosomes = seqz.data$chromosome,
-            window = window, overlap = overlap), tumor = windowValues(x = seqz.data$depth.tumor/avg_depths$tumor,
-            positions = seqz.data$position, chromosomes = seqz.data$chromosome,
-            window = window, overlap = overlap), raw_ratio = windowValues(x = seqz.data$depth.ratio,
-            positions = seqz.data$position, chromosomes = seqz.data$chromosome,
-            window = window, overlap = overlap, weight = seqz.data$depth.normal),
-        n_normal = windowValues(x = depths$normal, positions = seqz.data$position,
-            chromosomes = seqz.data$chromosome, window = window,
-            overlap = overlap), n_tumor = windowValues(x = depths$tumor,
-            positions = seqz.data$position, chromosomes = seqz.data$chromosome,
-            window = window, overlap = overlap), baf = list())
+    # Precompute window indices once, reuse for all 6 variables
+    precomp <- precompute_windows(seqz.data$position,
+        seqz.data$chromosome, window = window, overlap = overlap)
+
+    list(
+        ratio = windowValues_fast(seqz.data$adjusted.ratio, precomp,
+            weight = seqz.data$depth.normal),
+        normal = windowValues_fast(seqz.data$depth.normal / avg_depths$normal, precomp),
+        tumor = windowValues_fast(seqz.data$depth.tumor / avg_depths$tumor, precomp),
+        raw_ratio = windowValues_fast(seqz.data$depth.ratio, precomp,
+            weight = seqz.data$depth.normal),
+        n_normal = windowValues_fast(depths$normal, precomp),
+        n_tumor = windowValues_fast(depths$tumor, precomp),
+        baf = list())
 }
 
 initialize_extract_containers <- function(chromosome.list) {
@@ -391,93 +406,234 @@ log_chromosome_results <- function(segments, seqz.data, mutations,
 
 extract_process_chromosome <- function(chr, file, gc_stats, gc_splines,
     containers, params) {
-    # TODO: Add support for chromosome-specific parameters
-    # FIXME: Better handling of chromosome edge cases TODO:
-    # Consider adding checkpointing for long-running
-    # processes
+    # Memory-optimized version: reads file multiple times with
+    # only needed columns, instead of holding all data in memory.
+    # Works with per-chromosome seqz.gz files.
+    # Prerequisite: input file must not be modified during execution.
 
-    # Use safely_execute for chromosome processing
     safely_execute({
-        # Read and process chromosome data
-        file.lines <- gc_stats$file.metrics[which(params$chr.vect ==
-            chr), ]
-        seqz.data <- read.seqz(file, n_lines = c(file.lines$start,
-            file.lines$end), chr_name = chr)
+        chr_file <- file
+        # Selective-read mode: when file is a per-chromosome file
+        # (not the merged file) and no custom breaks
+        is_chr_file <- !is.null(params$original_file) && !identical(file, params$original_file)
+        use_selective_read <- is_chr_file && is.null(params$breaks)
 
-        # Validate seqz.data
-        seqz.data <- validate_data_frame(seqz.data, c("depth.tumor",
-            "depth.normal", "GC.percent"), "Chromosome data")
-        if (is.null(seqz.data))
-            return(NULL)
+        if (!use_selective_read) {
+            # Legacy mode: load everything at once
+            file.lines <- gc_stats$file.metrics[which(params$chr.vect == chr), ]
+            seqz.data <- read.seqz(file, n_lines = c(file.lines$start, file.lines$end),
+                chr_name = chr)
+            seqz.data <- validate_data_frame(seqz.data,
+                c("depth.tumor", "depth.normal", "GC.percent"),
+                "Chromosome data")
+            if (is.null(seqz.data))
+                return(NULL)
 
-        # Process depths and get modified seqz.data
-        depths_result <- process_depths(seqz.data, gc_splines,
-            params$avg_depths, params$ignore.normal)
-        seqz.data <- depths_result$seqz.data  # Use updated seqz.data
+            depths_result <- process_depths(seqz.data, gc_splines, params$avg_depths,
+                params$ignore.normal)
+            seqz.data <- depths_result$seqz.data
 
-        # Calculate windows with initialized data
-        windows <- calculate_windows(seqz.data = seqz.data, depths = depths_result,
-            window = params$window, overlap = params$overlap,
-            avg_depths = params$avg_depths)
+            windows <- calculate_windows(seqz.data = seqz.data, depths = depths_result,
+                window = params$window,
+                overlap = params$overlap, avg_depths = params$avg_depths)
 
-        # Process BAF if heterozygous positions exist
-        seqz.het <- seqz.data[seqz.data$zygosity.normal == "het",
-            ]
-        num_het_positions <- nrow(seqz.het)
-        if (num_het_positions > 0) {
-            windows$baf <- windowBf(Af = seqz.het$Af, Bf = seqz.het$Bf,
-                good.reads = seqz.het$good.reads, chromosomes = seqz.het$chromosome,
-                positions = seqz.het$position, conf = 0.95, window = params$window,
-                overlap = params$overlap)
-        } else {
-            windows$baf <- list(data.frame(start = min(seqz.data$position,
-                na.rm = TRUE), end = max(seqz.data$position,
-                na.rm = TRUE), mean = 0, q0 = 0, q1 = 0, N = 1))
+            seqz.het <- seqz.data[seqz.data$zygosity.normal == "het", ]
+            num_het_positions <- nrow(seqz.het)
+            if (num_het_positions > 0) {
+                baf_precomp <- precompute_windows(seqz.het$position,
+                    seqz.het$chromosome, window = params$window, overlap = params$overlap)
+                windows$baf <- windowBf_fast(Af = seqz.het$Af, Bf = seqz.het$Bf,
+                    good.reads = seqz.het$good.reads, precomp = baf_precomp, conf = 0.95)
+            } else {
+                windows$baf <- list(data.frame(
+                    start = min(seqz.data$position, na.rm = TRUE),
+                    end = max(seqz.data$position, na.rm = TRUE),
+                    mean = 0, q0 = 0, q1 = 0, N = 1))
+            }
+
+            segments <- process_segments(seqz.data, params$breaks, chr, windows, params)
+
+            mutations <- tryCatch({
+                mutation.table(seqz.data, mufreq.threshold = params$min.mut.freq,
+                    min.reads = params$min.reads,
+                    min.reads.normal = params$min.reads.normal,
+                    max.mut.types = params$max.mut.types,
+                    min.type.freq = params$min.type.freq,
+                    min.fw.freq = params$min.fw.freq,
+                    segments = segments$seg)
+            }, error = function(e) {
+                message("Warning: Mutation table calculation failed: ", e$message)
+                data.frame()
+            })
+
+            containers <- store_chromosome_results(
+                list(windows = windows, segments = segments,
+                     mutations = mutations,
+                     norm_gc_stats = depths_result$norm_gc_stats),
+                containers, chr, which(params$chromosome.list == chr))
+
+            if (params$verbose) {
+                log_chromosome_results(segments, seqz.data, mutations, nrow(seqz.het))
+            }
+            return(containers)
         }
 
-        # Add debug message
+        # ============================================
+        # Selective-read mode: read only needed columns per step
+        # ============================================
+
+        if (params$verbose)
+            message("\n[Selective-read] Processing chromosome ", chr)
+
+        # --- Step 1: process_depths ---
+        # Read only depth + GC columns, compute adjusted.ratio
+        depth_data <- read.seqz.columns(chr_file,
+            c("chromosome", "position", "depth.tumor", "depth.normal", "GC.percent"))
+        depth_data <- validate_data_frame(depth_data,
+            c("depth.tumor", "depth.normal", "GC.percent"),
+            "Chromosome data")
+        if (is.null(depth_data))
+            return(NULL)
+
+        depths_result <- process_depths(depth_data, gc_splines,
+            params$avg_depths, params$ignore.normal)
+        # Save computed vectors we need later
+        n_rows <- nrow(depth_data)
+        positions <- depth_data$position
+        chromosomes <- depth_data$chromosome
+        adjusted_ratio <- depths_result$seqz.data$adjusted.ratio
+        depth_ratio <- depths_result$seqz.data$depth.ratio
+        depth_normal <- depth_data$depth.normal
+        depth_tumor <- depth_data$depth.tumor
+        norm_gc_stats <- depths_result$norm_gc_stats
+        norm_depths <- list(normal = depths_result$normal, tumor = depths_result$tumor)
+        rm(depth_data, depths_result); gc(verbose = FALSE)
+
+        if (params$verbose)
+            message("  Step 1 (depths): done, ", n_rows, " rows")
+
+        # --- Step 2: calculate_windows ---
+        # Build minimal data.frame for calculate_windows
+        win_data <- data.frame(
+            chromosome = chromosomes,
+            position = positions,
+            adjusted.ratio = adjusted_ratio,
+            depth.ratio = depth_ratio,
+            depth.normal = depth_normal,
+            depth.tumor = depth_tumor)
+
+        win_depths <- list(normal = norm_depths$normal, tumor = norm_depths$tumor)
+
+        windows <- calculate_windows(seqz.data = win_data, depths = win_depths,
+            window = params$window,
+            overlap = params$overlap, avg_depths = params$avg_depths)
+        rm(win_data, win_depths, depth_tumor, depth_normal); gc(verbose = FALSE)
+
+        if (params$verbose)
+            message("  Step 2 (windows): done")
+
+        # --- Step 3: BAF window ---
+        # Read BAF-related columns, filter het only
+        baf_data <- read.seqz.filtered(chr_file,
+            c("chromosome", "position", "zygosity.normal", "Af", "Bf", "good.reads"),
+            filter_fn = function(chunk) chunk$zygosity.normal == "het")
+
+        num_het_positions <- nrow(baf_data)
+        if (num_het_positions > 0) {
+            baf_precomp <- precompute_windows(baf_data$position, baf_data$chromosome,
+                window = params$window, overlap = params$overlap)
+            windows$baf <- windowBf_fast(Af = baf_data$Af, Bf = baf_data$Bf,
+                good.reads = baf_data$good.reads, precomp = baf_precomp, conf = 0.95)
+        } else {
+            windows$baf <- list(data.frame(
+                start = min(positions, na.rm = TRUE),
+                end = max(positions, na.rm = TRUE),
+                mean = 0, q0 = 0, q1 = 0, N = 1))
+        }
+        rm(baf_data); gc(verbose = FALSE)
+
         if (params$verbose) {
-            message("\nWindows calculation results for chromosome ",
-                chr, ":")
+            message("  Step 3 (BAF): done, ", num_het_positions, " het positions")
             message("  ratio entries: ", nrow(windows$ratio[[1]]))
-            message("  raw_ratio entries: ", nrow(windows$raw_ratio[[1]]))
             message("  BAF entries: ", nrow(windows$baf[[1]]))
         }
 
-        # Process segments
-        segments <- process_segments(seqz.data, params$breaks,
-            chr, windows, params)
+        # --- Step 4: segmentation ---
+        # Read columns needed by slide_tracks + segment.breaks
+        seg_data <- read.seqz.columns(chr_file,
+            c("chromosome", "position", "zygosity.normal",
+              "good.reads", "Af", "Bf", "depth.normal"))
+        # Add adjusted.ratio (computed in Step 1, not in file)
+        if (nrow(seg_data) != length(adjusted_ratio))
+            stop("Row count mismatch between seg_data and adjusted_ratio")
+        seg_data$adjusted.ratio <- adjusted_ratio
 
-        # Ensure seqz.data has necessary columns for
-        # mutation.table
-        required_columns <- c("good.reads", "depth.normal")
-        if (!all(required_columns %in% colnames(seqz.data))) {
-            stop("seqz.data is missing required columns for mutation.table")
+        # process_segments will call slide_tracks + segment.breaks
+        segments <- process_segments(seg_data, params$breaks, chr, windows, params)
+        rm(seg_data); gc(verbose = FALSE)
+
+        if (params$verbose)
+            message("  Step 4 (segmentation): done")
+
+        # --- Step 5: mutation.table ---
+        # Read with aggressive filtering
+        mut_min_reads <- params$min.reads
+        mut_min_reads_normal <- params$min.reads.normal
+        mut_mufreq_threshold <- params$min.mut.freq
+
+        mut_data <- read.seqz.filtered(chr_file,
+            c("chromosome", "position", "zygosity.normal",
+              "AB.tumor", "AB.normal", "good.reads", "depth.normal",
+              "Af", "tumor.strand", "GC.percent"),
+            filter_fn = function(chunk) {
+                chunk$zygosity.normal == "hom" &
+                chunk$AB.tumor != "." &
+                chunk$good.reads >= mut_min_reads &
+                chunk$depth.normal >= mut_min_reads_normal &
+                chunk$Af <= (1 - mut_mufreq_threshold)
+            })
+
+        # Match adjusted.ratio from Step 1 by position
+        if (nrow(mut_data) > 0) {
+            idx <- match(mut_data$position, positions)
+            valid <- !is.na(idx)
+            if (!all(valid)) {
+                warning(sum(!valid), " mutation positions not found in depth data")
+                mut_data <- mut_data[valid, , drop = FALSE]
+                idx <- idx[valid]
+            }
+            mut_data$adjusted.ratio <- adjusted_ratio[idx]
         }
-
-        # Process mutations using mutation.table
+        rm(adjusted_ratio); gc(verbose = FALSE)
 
         mutations <- tryCatch({
-            mutation.table(seqz.data, mufreq.threshold = params$min.mut.freq,
-                min.reads = params$min.reads, min.reads.normal = params$min.reads.normal,
-                max.mut.types = params$max.mut.types, min.type.freq = params$min.type.freq,
-                min.fw.freq = params$min.fw.freq, segments = segments$seg)
+            mutation.table(mut_data,
+                mufreq.threshold = params$min.mut.freq,
+                min.reads = params$min.reads,
+                min.reads.normal = params$min.reads.normal,
+                max.mut.types = params$max.mut.types,
+                min.type.freq = params$min.type.freq,
+                min.fw.freq = params$min.fw.freq,
+                segments = segments$seg)
         }, error = function(e) {
-            message("Warning: Mutation table calculation failed: ",
-                e$message)
-            data.frame()  # Return an empty data frame on error
+            message("Warning: Mutation table calculation failed: ", e$message)
+            data.frame()
         })
+        rm(mut_data); gc(verbose = FALSE)
 
+        if (params$verbose)
+            message("  Step 5 (mutations): done, ", nrow(mutations), " mutations")
 
-        # Store results
-        containers <- store_chromosome_results(list(windows = windows,
-            segments = segments, mutations = mutations, norm_gc_stats = depths_result$norm_gc_stats),
-            containers, chr, which(params$chromosome.list ==
-                chr))
+        # --- Store results ---
+        containers <- store_chromosome_results(
+            list(windows = windows, segments = segments,
+                 mutations = mutations, norm_gc_stats = norm_gc_stats),
+            containers, chr, which(params$chromosome.list == chr))
 
         if (params$verbose) {
-            log_chromosome_results(segments, seqz.data, mutations,
-                num_het_positions)
+            log_chromosome_results(segments,
+                data.frame(position = positions, chromosome = chromosomes),
+                mutations, num_het_positions)
         }
 
         containers
@@ -492,7 +648,7 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
     max.mut.types = 1, min.type.freq = 0.9, min.fw.freq = 0,
     assembly = "hg38", female = TRUE, XY = c(X = "X", Y = "Y"),
     gc.stats = NULL, do_raster = FALSE, smooth_gc = FALSE, min_times_gc = 5,
-    gc_grid = 250, parallel = 1, weighted.mean = TRUE, ...) {
+    gc_grid = 250, parallel = 1, weighted.mean = TRUE, cytoband_file = NULL, ...) {
     # Initialize GC stats if needed
     local_gc_stats <- if (is.null(gc.stats)) {
         gc.sample.stats(file, verbose = verbose, parallel = parallel,
@@ -508,7 +664,7 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
     # Initialize chromosome list if needed
     if (is.null(chromosome.list)) {
         chromosome.list <- select_chromosomes_with_centromere(assembly,
-            chr.vect)
+            chr.vect, cytoband_file = cytoband_file)
     } else {
         chromosome.list <- chromosome.list[chromosome.list %in%
             chr.vect]
@@ -518,7 +674,8 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
     XY_adjusted <- check_XY(XY, chr.vect)
 
     # Return complete parameter list
-    list(window = window, overlap = overlap, slide_win = slide_win,
+    list(original_file = file, window = window, overlap = overlap,
+        slide_win = slide_win,
         peak_wins = peak_wins, support_threshold = support_threshold,
         normalization.method = normalization.method, ignore.normal = ignore.normal,
         verbose = verbose, assembly = assembly, chromosome.list = chromosome.list,
@@ -531,7 +688,8 @@ extract_initialize_parameters <- function(file, window, overlap = 1,
         gc_grid = gc_grid, parallel = parallel, ratio_baf_raster = data.frame(dr = NULL),
         avg_depths = list(normal = weighted.mean(local_gc_stats$normal$depth,
             colSums(local_gc_stats$normal$n)), tumor = weighted.mean(local_gc_stats$tumor$depth,
-            colSums(local_gc_stats$tumor$n))), weighted.mean = weighted.mean)
+            colSums(local_gc_stats$tumor$n))), weighted.mean = weighted.mean,
+            cytoband_file = cytoband_file)
 }
 
 finalize_extract_results <- function(containers, params, gc_stats,
@@ -587,9 +745,13 @@ finalize_extract_results <- function(containers, params, gc_stats,
 
     # Construct and return complete results
     list(BAF = containers$windows.baf, ratio = containers$windows.ratio,
-        raw_ratio = containers$windows.raw_ratio, depths = list(raw = list(normal = containers$windows.normal,
-            tumor = containers$windows.tumor), norm = list(normal = containers$windows.n_normal,
-            tumor = containers$windows.n_tumor)), mutations = containers$mutation.list,
+        raw_ratio = containers$windows.raw_ratio,
+        depths = list(
+            raw = list(normal = containers$windows.normal,
+                tumor = containers$windows.tumor),
+            norm = list(normal = containers$windows.n_normal,
+                tumor = containers$windows.n_tumor)),
+        mutations = containers$mutation.list,
         segments = containers$segments.list, win_peaks = containers$rank_peaks.list,
         chromosomes = params$chromosome.list, gc = gc_stats,
         ignore.normal = params$ignore.normal, gc_norm = gc_norm,
@@ -678,8 +840,8 @@ rank_segments <- function(breaks_list, windows, params) {
     if (params$verbose) {
         message("Segment ranking results:")
         message("Selected window size: ", select_win)
-        message("Number of segments: ", compare_bins_segs_high$n_segs[compare_bins_segs_high$peak_win ==
-            select_win])
+        message("Number of segments: ",
+            compare_bins_segs_high$n_segs[compare_bins_segs_high$peak_win == select_win])
     }
 
     list(segs = breaks_list[[as.character(select_win)]], selected_win = select_win,
@@ -710,7 +872,7 @@ process_segments <- function(seqz.data, breaks, chr, windows,
         breaks_chr_list <- lapply(params$peak_wins, function(x) {
             breaks_chr <- extract_breaks_tracks(track = diff_track,
                 breaks = breaks, peak_win = x, assembly = params$assembly,
-                chromosome = chr)
+                chromosome = chr, cytoband_file = params$cytoband_file)
 
             if (inherits(breaks_chr, "try-error") || is.null(breaks_chr) ||
                 nrow(breaks_chr) == 0 || length(breaks_chr) ==
@@ -722,8 +884,8 @@ process_segments <- function(seqz.data, breaks, chr, windows,
 
             tryCatch({
                 segment.breaks(seqz.tab = seqz.data, breaks = breaks_chr,
-                  min.reads.baf = params$min.reads.baf, weighted.mean = weighted.mean  # Use local variable
-)
+                    min.reads.baf = params$min.reads.baf,
+                    weighted.mean = weighted.mean)  # Use local variable
             }, error = function(e) {
                 message("Warning: Segment calculation failed: ",
                   e$message)
@@ -776,21 +938,25 @@ process_segments <- function(seqz.data, breaks, chr, windows,
 }
 
 # Add safer parallel processing management function
-manage_parallel_cluster <- function(n_cores) {
+manage_parallel_cluster <- function(n_cores, type = "FORK") {
     if (n_cores > 1) {
         cl <- NULL
         tryCatch({
-            cl <- parallel::makeCluster(n_cores)
-            # Load required packages on worker nodes
-            parallel::clusterEvalQ(cl, {
-                library(pbapply)
-                library(stringr)
-            })
+            if (type == "PSOCK") {
+                cl <- parallel::makeCluster(n_cores, type = "PSOCK")
+                parallel::clusterEvalQ(cl, library(sequenza))
+            } else {
+                if (.Platform$OS.type != "unix")
+                    stop("FORK clusters require Unix (use type='PSOCK' on Windows)")
+                cl <- parallel::makeForkCluster(n_cores)
+            }
             return(cl)
         }, error = function(e) {
+            warning("Failed to create ", type, " cluster: ", e$message,
+                "\nFalling back to sequential processing")
             if (!is.null(cl))
                 try(parallel::stopCluster(cl), silent = TRUE)
-            stop("Failed to create cluster: ", e$message)
+            NULL
         })
     }
     return(NULL)

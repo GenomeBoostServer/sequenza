@@ -1,4 +1,21 @@
 
+## Fork Notice
+
+This is a modified version of the original
+[sequenza](https://cran.r-project.org/package=sequenza) package
+(branch: chemins) by Francesco Favero et al.
+
+Modifications by Genome4me Incorporated are on the
+`chemins` branch and include:
+- Memory optimization (FORK to PSOCK cluster)
+- R_LIBS environment variable support for PSOCK workers
+- Offline cytoband file parameter support
+
+This software is distributed under the GPL-3 license,
+same as the original.
+Original source: https://bitbucket.org/sequenzatools/sequenza
+
+---
 
 Sequenza: Copy Number Estimation from Tumor Genome Sequencing Data
 ==================================================================

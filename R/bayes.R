@@ -18,10 +18,10 @@ baf.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
         sum(L.model[, 4])
     }
 
-    # Use consistent cluster management
+    # Use PSOCK to avoid inheriting parent heap after extract
     cl <- NULL
     if (mc.cores > 1) {
-        cl <- manage_parallel_cluster(mc.cores)
+        cl <- manage_parallel_cluster(mc.cores, type = "PSOCK")
         on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl),
             silent = TRUE))
     }
@@ -50,10 +50,10 @@ mufreq.model.fit <- function(cellularity = seq(0.3, 1, by = 0.01),
     result <- expand.grid(ploidy = ploidy, cellularity = cellularity,
         KEEP.OUT.ATTRS = FALSE)
 
-    # Use consistent cluster management
+    # Use PSOCK to avoid inheriting parent heap after extract
     cl <- NULL
     if (mc.cores > 1) {
-        cl <- manage_parallel_cluster(mc.cores)
+        cl <- manage_parallel_cluster(mc.cores, type = "PSOCK")
         on.exit(if (!is.null(cl)) try(parallel::stopCluster(cl),
             silent = TRUE))
     }
